@@ -48,14 +48,14 @@ app = FastAPI(
     title=settings.app_name,
     description="Multi-asset investment platform API for Pakistan market",
     version="1.0.0",
-    docs_url="/docs" if settings.debug else None,
-    redoc_url="/redoc" if settings.debug else None,
-    openapi_url="/openapi.json" if settings.debug else None,
+    docs_url="/docs",
+    redoc_url="/redoc",
+    openapi_url="/openapi.json",
     lifespan=lifespan,
 )
 
-# In development, allow all origins; in production, use configured origins
-cors_origins = ["*"] if settings.is_development else settings.cors_origins
+# Allow all origins for now (can restrict later)
+cors_origins = ["*"]
 print(f"Using CORS origins: {cors_origins}")
 
 app.add_middleware(
