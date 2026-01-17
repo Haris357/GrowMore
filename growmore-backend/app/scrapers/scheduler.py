@@ -23,6 +23,7 @@ from app.scrapers.news.propakistani import ProPakistaniScraper
 from app.scrapers.hackernews.hn_scraper import HackerNewsScraper
 from app.scrapers.rss.feed_aggregator import RSSFeedAggregator, PakistanFinanceRSSAggregator
 from app.scrapers.stocks.psx_scraper import PSXScraper
+from app.scrapers.stocks.tickeranalysts_scraper import TickerAnalystsScraper
 from app.scrapers.commodities.gold_scraper import GoldScraper
 from app.scrapers.commodities.silver_scraper import SilverScraper
 from app.ai.sentiment_analyzer import SentimentAnalyzer
@@ -55,6 +56,7 @@ class ScraperScheduler:
         self.rss_scraper = RSSFeedAggregator()
         self.pakistan_rss_scraper = PakistanFinanceRSSAggregator()
         self.stock_scraper = PSXScraper()
+        self.fundamentals_scraper = TickerAnalystsScraper()
         self.gold_scraper = GoldScraper()
         self.silver_scraper = SilverScraper()
         self.sentiment_analyzer = SentimentAnalyzer()
@@ -205,9 +207,20 @@ class ScraperScheduler:
     async def scrape_stocks(self):
         logger.info("Starting stock scrape")
         try:
+            # First, get basic price data from PSX
             stocks = await self.stock_scraper.scrape()
             await self._update_stock_prices(stocks)
             logger.info(f"Stock scrape completed. Updated {len(stocks)} stocks")
+
+            # Then, try to get fundamental data from Ticker Analysts
+            try:
+                fundamentals = await self.fundamentals_scraper.scrape()
+                if fundamentals:
+                    await self._update_stock_fundamentals(fundamentals)
+                    logger.info(f"Fundamentals scrape completed. Updated {len(fundamentals)} stocks")
+            except Exception as e:
+                logger.warning(f"Fundamentals scrape failed (non-critical): {e}")
+
         except Exception as e:
             logger.error(f"Error scraping stocks: {e}")
 
@@ -257,6 +270,72 @@ class ScraperScheduler:
                 logger.error(f"Error updating stock {stock_data.get('symbol')}: {e}")
 
         logger.info(f"Updated {updated_count} stock prices")
+
+    async def _update_stock_fundamentals(self, stocks: list):
+        """Update stocks with fundamental data from Ticker Analysts."""
+        updated_count = 0
+        for stock_data in stocks:
+            try:
+                symbol = stock_data.get("symbol")
+                if not symbol:
+                    continue
+
+                company_result = self.db.table("companies").select("id, name").eq(
+                    "symbol", symbol
+                ).execute()
+
+                if not company_result.data:
+                    continue
+
+                company_id = company_result.data[0]["id"]
+                company_name = company_result.data[0].get("name")
+
+                # Update company name if we got a better one
+                if stock_data.get("name") and stock_data["name"] != symbol:
+                    if not company_name or company_name == symbol:
+                        self.db.table("companies").update({
+                            "name": stock_data["name"]
+                        }).eq("id", company_id).execute()
+
+                stock_result = self.db.table("stocks").select("id").eq(
+                    "company_id", company_id
+                ).execute()
+
+                if not stock_result.data:
+                    continue
+
+                # Build update data with all available fundamental fields
+                update_data = {"last_updated": datetime.utcnow().isoformat()}
+
+                # Valuation metrics
+                fundamental_fields = [
+                    "market_cap", "pe_ratio", "pb_ratio", "ps_ratio", "peg_ratio", "ev_ebitda",
+                    "eps", "book_value", "dps", "dividend_yield",
+                    "roe", "roa", "roce", "gross_margin", "operating_margin", "net_margin", "profit_margin",
+                    "debt_to_equity", "debt_to_assets", "current_ratio", "quick_ratio", "interest_coverage",
+                    "revenue_growth", "earnings_growth", "profit_growth", "asset_growth",
+                    "free_cash_flow", "operating_cash_flow", "fcf_yield",
+                    "beta", "shares_outstanding", "float_shares", "payout_ratio",
+                    "week_52_high", "week_52_low", "avg_volume"
+                ]
+
+                for field in fundamental_fields:
+                    value = stock_data.get(field)
+                    if value is not None:
+                        try:
+                            update_data[field] = float(value) if not isinstance(value, int) else value
+                        except (ValueError, TypeError):
+                            pass
+
+                self.db.table("stocks").update(update_data).eq(
+                    "id", stock_result.data[0]["id"]
+                ).execute()
+                updated_count += 1
+
+            except Exception as e:
+                logger.error(f"Error updating fundamentals for {stock_data.get('symbol')}: {e}")
+
+        logger.info(f"Updated {updated_count} stocks with fundamental data")
 
     async def scrape_commodities(self):
         logger.info("Starting commodity scrape")
@@ -358,6 +437,15 @@ class ScraperScheduler:
             await self.scrape_news()
         elif scraper_type == "stocks":
             await self.scrape_stocks()
+        elif scraper_type == "fundamentals":
+            # Scrape only fundamentals (useful for one-time data enrichment)
+            try:
+                fundamentals = await self.fundamentals_scraper.scrape()
+                if fundamentals:
+                    await self._update_stock_fundamentals(fundamentals)
+                    logger.info(f"Manual fundamentals scrape completed. Updated {len(fundamentals)} stocks")
+            except Exception as e:
+                logger.error(f"Error in manual fundamentals scrape: {e}")
         elif scraper_type == "commodities":
             await self.scrape_commodities()
         elif scraper_type == "process":

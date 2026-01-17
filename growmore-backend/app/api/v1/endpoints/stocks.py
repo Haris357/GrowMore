@@ -48,11 +48,47 @@ async def list_stocks(
             name=company.get("name", ""),
             logo_url=company.get("logo_url"),
             sector_name=sector.get("name") if sector else None,
+            # Price Data
             current_price=item.get("current_price"),
+            open_price=item.get("open_price"),
+            high_price=item.get("high_price"),
+            low_price=item.get("low_price"),
+            previous_close=item.get("previous_close"),
             change_amount=item.get("change_amount"),
             change_percentage=item.get("change_percentage"),
             volume=item.get("volume"),
+            avg_volume=item.get("avg_volume"),
+            # 52 Week
+            week_52_high=item.get("week_52_high"),
+            week_52_low=item.get("week_52_low"),
+            # Valuation
             market_cap=item.get("market_cap"),
+            pe_ratio=item.get("pe_ratio"),
+            pb_ratio=item.get("pb_ratio"),
+            ps_ratio=item.get("ps_ratio"),
+            peg_ratio=item.get("peg_ratio"),
+            ev_ebitda=item.get("ev_ebitda"),
+            # Per Share
+            eps=item.get("eps"),
+            book_value=item.get("book_value"),
+            dps=item.get("dps"),
+            dividend_yield=item.get("dividend_yield"),
+            # Profitability
+            roe=item.get("roe"),
+            roa=item.get("roa"),
+            roce=item.get("roce"),
+            gross_margin=item.get("gross_margin"),
+            operating_margin=item.get("operating_margin"),
+            net_margin=item.get("net_margin"),
+            # Leverage
+            debt_to_equity=item.get("debt_to_equity"),
+            debt_to_assets=item.get("debt_to_assets"),
+            current_ratio=item.get("current_ratio"),
+            quick_ratio=item.get("quick_ratio"),
+            # Growth
+            revenue_growth=item.get("revenue_growth"),
+            earnings_growth=item.get("earnings_growth"),
+            profit_growth=item.get("profit_growth"),
             last_updated=item.get("last_updated"),
         ))
 

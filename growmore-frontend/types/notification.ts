@@ -12,41 +12,49 @@ export interface Notification {
   created_at: string;
 }
 
+// Alert condition types from backend
+export type AlertCondition =
+  | 'price_above'
+  | 'price_below'
+  | 'change_above'
+  | 'change_below'
+  | 'volume_spike'
+  | 'new_high'
+  | 'new_low';
+
+export interface AlertConditionInfo {
+  id: AlertCondition;
+  description: string;
+}
+
 export interface PriceAlert {
   id: string;
   user_id: string;
-  watchlist_item_id?: string;
-  asset_type: 'stock' | 'commodity';
-  asset_id: string;
   symbol: string;
-  name: string;
-  condition_type: 'price_above' | 'price_below' | 'change_percent_above' | 'change_percent_below';
-  threshold_value: number;
-  current_value?: number;
+  condition: AlertCondition;
+  target_value: number;
+  notes?: string;
   is_active: boolean;
   triggered_at?: string;
   created_at: string;
-  updated_at: string;
-}
-
-export interface NotificationPreferences {
-  price_alerts_enabled: boolean;
-  news_alerts_enabled: boolean;
-  portfolio_updates_enabled: boolean;
-  goal_reminders_enabled: boolean;
-  market_updates_enabled: boolean;
-  email_notifications_enabled: boolean;
-  push_notifications_enabled: boolean;
-  quiet_hours_start?: string;
-  quiet_hours_end?: string;
+  updated_at?: string;
 }
 
 export interface PriceAlertCreate {
-  watchlist_item_id?: string;
-  asset_type: 'stock' | 'commodity';
-  asset_id: string;
   symbol: string;
-  name: string;
-  condition_type: 'price_above' | 'price_below' | 'change_percent_above' | 'change_percent_below';
-  threshold_value: number;
+  condition: AlertCondition;
+  target_value: number;
+  notes?: string;
+}
+
+export interface NotificationPreferences {
+  price_alerts: boolean;
+  news_alerts: boolean;
+  portfolio_updates: boolean;
+  goal_reminders: boolean;
+  market_updates: boolean;
+  email_enabled: boolean;
+  push_enabled: boolean;
+  quiet_hours_start?: string;
+  quiet_hours_end?: string;
 }

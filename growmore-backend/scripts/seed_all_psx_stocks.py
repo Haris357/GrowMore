@@ -10,12 +10,53 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.db.supabase import get_supabase_service_client
-from app.scrapers.stocks.psx_scraper import PSXScraper
+from app.scrapers.stocks.psx_scraper import PSXScraper, PSX_SECTOR_CODES
 
 
-# Sector mapping based on PSX sectors
-# This maps common sector names/keywords to our sector codes
-SECTOR_MAPPING = {
+# Map PSX sector codes to our internal sector codes (based on actual PSX DPS codes)
+PSX_CODE_TO_INTERNAL = {
+    "0801": "AUTO",           # Automobile Assembler
+    "0802": "AUTOPART",       # Automobile Parts & Accessories
+    "0803": "ENGG",           # Cable & Electrical Goods
+    "0804": "CEMENT",         # Cement
+    "0805": "CHEM",           # Chemical
+    "0806": "MISC",           # Close - End Mutual Fund
+    "0807": "BANK",           # Commercial Banks
+    "0808": "ENGG",           # Engineering
+    "0809": "FERT",           # Fertilizer
+    "0810": "FOOD",           # Food & Personal Care Products
+    "0811": "GLASS",          # Glass & Ceramics
+    "0812": "INS",            # Insurance
+    "0813": "INVBANK",        # Inv. Banks / Inv. Cos. / Securities Cos.
+    "0814": "MISC",           # Jute
+    "0815": "MISC",           # Leasing Companies
+    "0816": "LEATHER",        # Leather & Tanneries
+    "0817": "MISC",           # Miscellaneous
+    "0818": "MISC",           # Modarabas
+    "0819": "PAPER",          # Paper & Board
+    "0820": "OIL",            # Oil & Gas Exploration Companies
+    "0821": "OILMKT",         # Oil & Gas Marketing Companies
+    "0822": "PHARMA",         # Pharmaceuticals
+    "0823": "POWER",          # Power Generation & Distribution
+    "0824": "POWER",          # Power Generation (IPPs)
+    "0825": "REF",            # Refinery
+    "0826": "SUGAR",          # Sugar Allied Industries
+    "0827": "SYNTH",          # Synthetic & Rayon
+    "0828": "TECH",           # Technology & Communication
+    "0829": "TEXTILE",        # Textile Composite
+    "0830": "TEXSPIN",        # Textile Spinning
+    "0831": "TEXWEAVE",       # Textile Weaving
+    "0832": "TOBACCO",        # Tobacco
+    "0833": "TRANS",          # Transport
+    "0834": "MISC",           # Vanaspati & Allied Industries
+    "0835": "MISC",           # Woollen
+    "0836": "PROP",           # Real Estate Investment Trust
+    "0837": "MISC",           # Exchange Traded Funds
+    "0838": "MISC",           # Mutual Funds
+}
+
+# Fallback mapping for sector names (if code not available)
+SECTOR_NAME_MAPPING = {
     "COMMERCIAL BANKS": "BANK",
     "BANK": "BANK",
     "CEMENT": "CEMENT",
@@ -74,20 +115,33 @@ def get_sectors(client, market_id):
     return {s["code"]: s["id"] for s in result.data} if result.data else {}
 
 
-def get_sector_id(sector_name, sectors):
-    """Map sector name from PSX to our sector code."""
+def get_sector_id(stock_data, sectors):
+    """Map sector from PSX to our sector code.
+
+    First tries to use sector_code (4-digit PSX code),
+    then falls back to sector name matching.
+    """
+    # Try sector code first (more reliable)
+    sector_code = stock_data.get("sector_code")
+    if sector_code and sector_code in PSX_CODE_TO_INTERNAL:
+        internal_code = PSX_CODE_TO_INTERNAL[sector_code]
+        if internal_code in sectors:
+            return sectors[internal_code]
+
+    # Fall back to sector name
+    sector_name = stock_data.get("sector", "")
     if not sector_name:
         return sectors.get("MISC")
 
     sector_upper = sector_name.upper().strip()
 
     # Direct mapping
-    if sector_upper in SECTOR_MAPPING:
-        code = SECTOR_MAPPING[sector_upper]
+    if sector_upper in SECTOR_NAME_MAPPING:
+        code = SECTOR_NAME_MAPPING[sector_upper]
         return sectors.get(code, sectors.get("MISC"))
 
     # Partial match
-    for key, code in SECTOR_MAPPING.items():
+    for key, code in SECTOR_NAME_MAPPING.items():
         if key in sector_upper or sector_upper in key:
             return sectors.get(code, sectors.get("MISC"))
 
@@ -136,9 +190,8 @@ async def seed_all_stocks():
             skipped_count += 1
             continue
 
-        # Get sector from scraped data or use MISC
-        sector_name = stock_data.get("sector", "")
-        sector_id = get_sector_id(sector_name, sectors)
+        # Get sector from scraped data (using code or name)
+        sector_id = get_sector_id(stock_data, sectors)
 
         if symbol in existing_symbols:
             # Update existing stock price

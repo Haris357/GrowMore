@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LoadingSpinner } from '@/components/common/loading-spinner';
+import { StatCardSkeleton, CardSkeleton } from '@/components/common/skeletons';
 import { PriceDisplay } from '@/components/common/price-display';
 import { Coins, TrendingUp, TrendingDown, Calculator } from 'lucide-react';
 import { api } from '@/lib/api';
@@ -103,7 +103,23 @@ export default function CommoditiesPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner size="lg" />;
+    return (
+      <div className="space-y-6">
+        <div className="space-y-2">
+          <div className="h-8 w-48 bg-muted animate-pulse rounded" />
+          <div className="h-4 w-64 bg-muted animate-pulse rounded" />
+        </div>
+        <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+          {Array.from({ length: 4 }).map((_, i) => (
+            <StatCardSkeleton key={i} />
+          ))}
+        </div>
+        <div className="grid gap-6 lg:grid-cols-2">
+          <CardSkeleton />
+          <CardSkeleton />
+        </div>
+      </div>
+    );
   }
 
   return (

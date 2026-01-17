@@ -1,5 +1,6 @@
 import { LucideIcon } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { ReactNode } from 'react';
 
 interface EmptyStateProps {
   icon: LucideIcon;
@@ -7,6 +8,7 @@ interface EmptyStateProps {
   description?: string;
   actionLabel?: string;
   onAction?: () => void;
+  action?: ReactNode;
 }
 
 export function EmptyState({
@@ -15,6 +17,7 @@ export function EmptyState({
   description,
   actionLabel,
   onAction,
+  action,
 }: EmptyStateProps) {
   return (
     <div className="flex flex-col items-center justify-center p-8 text-center">
@@ -27,9 +30,9 @@ export function EmptyState({
           {description}
         </p>
       )}
-      {actionLabel && onAction && (
+      {action ? action : (actionLabel && onAction && (
         <Button onClick={onAction}>{actionLabel}</Button>
-      )}
+      ))}
     </div>
   );
 }

@@ -1,16 +1,50 @@
 'use client';
 
 import { useEffect, useState, useCallback } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
-import { PriceDisplay } from '@/components/common/price-display';
-import { LoadingSpinner } from '@/components/common/loading-spinner';
+import { Badge } from '@/components/ui/badge';
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from '@/components/ui/table';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 import { EmptyState } from '@/components/common/empty-state';
-import { Search, TrendingUp, ChevronDown, Building2 } from 'lucide-react';
+import { TableSkeleton } from '@/components/common/skeletons';
+import {
+  Search,
+  TrendingUp,
+  ChevronLeft,
+  ChevronRight,
+  ChevronsLeft,
+  ChevronsRight,
+  Filter,
+  Columns3,
+  Sparkles,
+  Download,
+  X,
+  ArrowUpDown,
+} from 'lucide-react';
+import Link from 'next/link';
 import { api } from '@/lib/api';
 import { StockQuote } from '@/types/market';
+import { FilterModal, ScreenerFilters, defaultFilters } from '@/components/stocks/filter-modal';
+import { ColumnsModal, ColumnConfig, availableColumns } from '@/components/stocks/columns-modal';
+import { StrategiesModal } from '@/components/stocks/strategies-modal';
+import { StockDetailDrawer } from '@/components/stocks/stock-detail-drawer';
+import { cn } from '@/lib/utils';
 
 interface PaginationInfo {
   total: number;
@@ -18,84 +52,210 @@ interface PaginationInfo {
   page_size: number;
   total_pages: number;
   has_next: boolean;
+  has_previous: boolean;
 }
 
 export default function StocksPage() {
   const [stocks, setStocks] = useState<StockQuote[]>([]);
   const [isLoading, setIsLoading] = useState(true);
-  const [isLoadingMore, setIsLoadingMore] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const PAGE_SIZE = 100;
+  const [pageSize, setPageSize] = useState(50);
 
-  const fetchStocks = useCallback(async (page: number, append: boolean = false) => {
+  // Modal states
+  const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
+  const [isColumnsModalOpen, setIsColumnsModalOpen] = useState(false);
+  const [isStrategiesModalOpen, setIsStrategiesModalOpen] = useState(false);
+  const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
+  const [selectedStock, setSelectedStock] = useState<StockQuote | null>(null);
+
+  // Filter and column states
+  const [filters, setFilters] = useState<ScreenerFilters>(defaultFilters);
+  const [columns, setColumns] = useState<ColumnConfig[]>(availableColumns);
+
+  // Sort state
+  const [sortBy, setSortBy] = useState<string>('symbol');
+  const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+
+  const visibleColumns = columns.filter((col) => col.visible);
+
+  const fetchStocks = useCallback(async (page: number, size: number) => {
     try {
-      if (append) {
-        setIsLoadingMore(true);
-      } else {
-        setIsLoading(true);
-      }
-
+      setIsLoading(true);
       const response = await api.get('/stocks', {
-        params: {
-          page,
-          page_size: PAGE_SIZE,
-        },
+        params: { page, page_size: size },
       });
 
-      // Backend returns PaginatedResponse with 'items' key
       const data = response.data?.items || response.data?.stocks || response.data || [];
-      const newStocks = Array.isArray(data) ? data : [];
+      setStocks(Array.isArray(data) ? data : []);
 
-      if (append) {
-        setStocks(prev => [...prev, ...newStocks]);
-      } else {
-        setStocks(newStocks);
-      }
-
-      // Store pagination info
       setPagination({
         total: response.data?.total || 0,
         page: response.data?.page || page,
-        page_size: response.data?.page_size || PAGE_SIZE,
+        page_size: response.data?.page_size || size,
         total_pages: response.data?.total_pages || 1,
         has_next: response.data?.has_next || false,
+        has_previous: (response.data?.page || page) > 1,
       });
       setCurrentPage(page);
     } catch (err: any) {
       console.error('Error fetching stocks:', err);
       setError(err.response?.data?.detail || 'Failed to load stocks');
-      if (!append) {
-        setStocks([]);
-      }
+      setStocks([]);
     } finally {
       setIsLoading(false);
-      setIsLoadingMore(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchStocks(1);
-  }, [fetchStocks]);
+    fetchStocks(1, pageSize);
+  }, [fetchStocks, pageSize]);
 
-  const handleLoadMore = () => {
-    if (pagination?.has_next && !isLoadingMore) {
-      fetchStocks(currentPage + 1, true);
+  // Apply filters to stocks
+  const applyFilters = (stock: StockQuote): boolean => {
+    const price = parseFloat(String(stock.current_price || 0));
+    const changePct = parseFloat(String(stock.change_percentage ?? stock.change_percent ?? 0));
+    const volume = Number(stock.volume || 0);
+
+    if (filters.price_min > 0 && price < filters.price_min) return false;
+    if (filters.price_max < 10000 && price > filters.price_max) return false;
+    if (filters.change_pct_min > -100 && changePct < filters.change_pct_min) return false;
+    if (filters.change_pct_max < 100 && changePct > filters.change_pct_max) return false;
+    if (filters.volume_min > 0 && volume < filters.volume_min) return false;
+
+    if (filters.sector !== 'All Sectors') {
+      const stockSector = stock.sector_name || stock.sector || '';
+      if (!stockSector.toLowerCase().includes(filters.sector.toLowerCase())) return false;
+    }
+
+    return true;
+  };
+
+  // Filter and sort stocks
+  const processedStocks = stocks
+    .filter((stock) => {
+      const matchesSearch =
+        (stock.symbol || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (stock.name || stock.company_name || '').toLowerCase().includes(searchTerm.toLowerCase());
+      return matchesSearch && applyFilters(stock);
+    })
+    .sort((a, b) => {
+      const aVal = (a as any)[sortBy] ?? '';
+      const bVal = (b as any)[sortBy] ?? '';
+      if (sortOrder === 'asc') {
+        return aVal > bVal ? 1 : -1;
+      }
+      return aVal < bVal ? 1 : -1;
+    });
+
+  const handleSort = (key: string) => {
+    if (sortBy === key) {
+      setSortOrder(sortOrder === 'asc' ? 'desc' : 'asc');
+    } else {
+      setSortBy(key);
+      setSortOrder('asc');
     }
   };
 
-  const filteredStocks = stocks.filter(stock =>
-    (stock.symbol || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-    (stock.name || stock.company_name || '').toLowerCase().includes(searchTerm.toLowerCase())
-  );
+  const handlePageChange = (page: number) => {
+    fetchStocks(page, pageSize);
+  };
 
-  if (isLoading) {
-    return <LoadingSpinner size="lg" />;
-  }
+  const handlePageSizeChange = (size: string) => {
+    setPageSize(Number(size));
+    fetchStocks(1, Number(size));
+  };
 
-  if (error) {
+  const handleApplyFilters = (newFilters: ScreenerFilters) => {
+    setFilters(newFilters);
+  };
+
+  const handleSelectStrategy = (strategyFilters: ScreenerFilters) => {
+    setFilters(strategyFilters);
+  };
+
+  const handleClearFilters = () => {
+    setFilters(defaultFilters);
+  };
+
+  const getActiveFilterCount = () => {
+    let count = 0;
+    if (filters.sector !== 'All Sectors') count++;
+    if (filters.price_min > 0 || filters.price_max < 10000) count++;
+    if (filters.change_pct_min > -100 || filters.change_pct_max < 100) count++;
+    if (filters.volume_min > 0) count++;
+    if (filters.dividend_yield_min > 0) count++;
+    if (filters.roe_min > 0) count++;
+    return count;
+  };
+
+  const exportCSV = () => {
+    const headers = visibleColumns.map((col) => col.label).join(',');
+    const rows = processedStocks.map((stock) =>
+      visibleColumns.map((col) => (stock as any)[col.key] ?? '').join(',')
+    );
+    const csv = [headers, ...rows].join('\n');
+    const blob = new Blob([csv], { type: 'text/csv' });
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = 'psx-stocks.csv';
+    a.click();
+  };
+
+  const formatValue = (key: string, value: any): React.ReactNode => {
+    if (value === null || value === undefined) return <span className="text-muted-foreground">-</span>;
+
+    switch (key) {
+      case 'current_price':
+      case 'open_price':
+      case 'high_price':
+      case 'low_price':
+      case 'previous_close':
+      case 'week_52_high':
+      case 'week_52_low':
+        return <span className="font-mono">Rs. {parseFloat(String(value)).toFixed(2)}</span>;
+      case 'market_cap':
+        const cap = parseFloat(String(value));
+        if (cap >= 10000000) return <span className="font-mono">{(cap / 10000000).toFixed(1)} Cr</span>;
+        if (cap >= 100000) return <span className="font-mono">{(cap / 100000).toFixed(1)} L</span>;
+        return <span className="font-mono">{cap.toLocaleString()}</span>;
+      case 'volume':
+      case 'avg_volume':
+        return <span className="font-mono">{Number(value).toLocaleString()}</span>;
+      case 'change_percentage':
+      case 'dividend_yield':
+      case 'roe':
+      case 'roa':
+        const pct = parseFloat(String(value));
+        const isPositive = pct >= 0;
+        return (
+          <span className={cn('font-mono', isPositive ? 'text-green-600' : 'text-red-600')}>
+            {isPositive ? '+' : ''}{pct.toFixed(2)}%
+          </span>
+        );
+      case 'change_amount':
+        const change = parseFloat(String(value));
+        const isPos = change >= 0;
+        return (
+          <span className={cn('font-mono', isPos ? 'text-green-600' : 'text-red-600')}>
+            {isPos ? '+' : ''}{change.toFixed(2)}
+          </span>
+        );
+      case 'pe_ratio':
+      case 'pb_ratio':
+      case 'debt_to_equity':
+        return <span className="font-mono">{parseFloat(String(value)).toFixed(2)}</span>;
+      default:
+        return <span>{String(value)}</span>;
+    }
+  };
+
+  const activeFilterCount = getActiveFilterCount();
+
+  if (error && !stocks.length) {
     return (
       <EmptyState
         icon={TrendingUp}
@@ -106,138 +266,286 @@ export default function StocksPage() {
   }
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      <div>
-        <h1 className="text-3xl font-bold mb-2">PSX Stocks</h1>
-        <p className="text-muted-foreground">
-          Browse and track stocks from the Pakistan Stock Exchange
-        </p>
+    <div className="space-y-4 animate-fade-in">
+      {/* Header */}
+      <div className="flex flex-col gap-4">
+        <div>
+          <h1 className="text-2xl font-bold">PSX Stocks</h1>
+          <p className="text-sm text-muted-foreground">
+            Pakistan Stock Exchange listed companies
+          </p>
+        </div>
+
+        {/* Toolbar */}
+        <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
+          <div className="relative w-full sm:w-80">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search stocks..."
+              value={searchTerm}
+              onChange={(e) => setSearchTerm(e.target.value)}
+              className="pl-9"
+            />
+          </div>
+
+          <div className="flex flex-wrap items-center gap-2">
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsStrategiesModalOpen(true)}
+            >
+              <Sparkles className="h-4 w-4 mr-2" />
+              Strategies
+            </Button>
+            <Button
+              variant={activeFilterCount > 0 ? 'default' : 'outline'}
+              size="sm"
+              onClick={() => setIsFilterModalOpen(true)}
+            >
+              <Filter className="h-4 w-4 mr-2" />
+              Filters
+              {activeFilterCount > 0 && (
+                <Badge variant="secondary" className="ml-1 h-5 px-1.5">
+                  {activeFilterCount}
+                </Badge>
+              )}
+            </Button>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setIsColumnsModalOpen(true)}
+            >
+              <Columns3 className="h-4 w-4 mr-2" />
+              Columns
+            </Button>
+            <Button variant="outline" size="sm" onClick={exportCSV}>
+              <Download className="h-4 w-4 mr-2" />
+              Export
+            </Button>
+          </div>
+        </div>
+
+        {/* Active Filters */}
+        {activeFilterCount > 0 && (
+          <div className="flex items-center gap-2 flex-wrap text-sm">
+            <span className="text-muted-foreground">Filters:</span>
+            {filters.sector !== 'All Sectors' && (
+              <Badge variant="secondary">{filters.sector}</Badge>
+            )}
+            {(filters.price_min > 0 || filters.price_max < 10000) && (
+              <Badge variant="secondary">
+                Price: Rs.{filters.price_min}-{filters.price_max}
+              </Badge>
+            )}
+            {filters.dividend_yield_min > 0 && (
+              <Badge variant="secondary">Yield &gt; {filters.dividend_yield_min}%</Badge>
+            )}
+            <Button variant="ghost" size="sm" onClick={handleClearFilters} className="h-6 px-2 text-xs">
+              <X className="h-3 w-3 mr-1" />
+              Clear
+            </Button>
+          </div>
+        )}
       </div>
 
+      {/* Table Card */}
       <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Stock List</CardTitle>
-              <CardDescription>
-                Showing {stocks.length} of {pagination?.total || stocks.length} stocks
-              </CardDescription>
-            </div>
-            <div className="w-72">
-              <div className="relative">
-                <Search className="absolute left-2 top-2.5 h-4 w-4 text-muted-foreground" />
-                <Input
-                  placeholder="Search by symbol or name..."
-                  value={searchTerm}
-                  onChange={(e) => setSearchTerm(e.target.value)}
-                  className="pl-8"
-                />
+        <CardContent className="p-0">
+          {isLoading ? (
+            <TableSkeleton rows={15} columns={6} />
+          ) : (
+            <>
+              {/* Table with horizontal scroll */}
+              <div className="overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow className="bg-muted/50">
+                      {visibleColumns.map((col) => (
+                        <TableHead
+                          key={col.key}
+                          className={cn(
+                            'whitespace-nowrap cursor-pointer hover:bg-muted/80 transition-colors',
+                            col.key !== 'symbol' && col.key !== 'name' && col.key !== 'sector' && 'text-right'
+                          )}
+                          onClick={() => handleSort(col.key)}
+                        >
+                          <div className={cn(
+                            'flex items-center gap-1',
+                            col.key !== 'symbol' && col.key !== 'name' && col.key !== 'sector' && 'justify-end'
+                          )}>
+                            {col.label}
+                            {sortBy === col.key && (
+                              <ArrowUpDown className="h-3 w-3" />
+                            )}
+                          </div>
+                        </TableHead>
+                      ))}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {processedStocks.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={visibleColumns.length} className="h-32 text-center">
+                          <EmptyState
+                            icon={Search}
+                            title="No stocks found"
+                            description="Try adjusting your search or filters"
+                          />
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      processedStocks.map((stock) => (
+                        <TableRow
+                          key={stock.id}
+                          className="group cursor-pointer hover:bg-muted/50"
+                          onClick={() => {
+                            setSelectedStock(stock);
+                            setIsDetailDrawerOpen(true);
+                          }}
+                        >
+                          {visibleColumns.map((col) => {
+                            if (col.key === 'symbol') {
+                              return (
+                                <TableCell key={col.key} className="font-medium">
+                                  <div className="flex items-center gap-2 hover:text-primary">
+                                    <Avatar className="h-7 w-7">
+                                      {stock.logo_url && <AvatarImage src={stock.logo_url} alt={stock.symbol} />}
+                                      <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
+                                        {stock.symbol?.slice(0, 2)}
+                                      </AvatarFallback>
+                                    </Avatar>
+                                    <span className="font-mono font-semibold">{stock.symbol}</span>
+                                  </div>
+                                </TableCell>
+                              );
+                            }
+                            if (col.key === 'name') {
+                              return (
+                                <TableCell key={col.key} className="max-w-[200px]">
+                                  <span className="truncate block text-sm">
+                                    {stock.name || stock.company_name || '-'}
+                                  </span>
+                                </TableCell>
+                              );
+                            }
+                            if (col.key === 'sector') {
+                              return (
+                                <TableCell key={col.key} className="max-w-[150px]">
+                                  <span className="truncate block text-xs text-muted-foreground">
+                                    {stock.sector_name || stock.sector || '-'}
+                                  </span>
+                                </TableCell>
+                              );
+                            }
+                            return (
+                              <TableCell key={col.key} className="text-right whitespace-nowrap">
+                                {formatValue(col.key, (stock as any)[col.key])}
+                              </TableCell>
+                            );
+                          })}
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
               </div>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead>
-                <tr className="border-b">
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Symbol</th>
-                  <th className="text-left py-3 px-4 text-sm font-medium text-muted-foreground">Company</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Price</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Change</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Volume</th>
-                  <th className="text-right py-3 px-4 text-sm font-medium text-muted-foreground">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredStocks.length === 0 ? (
-                  <tr>
-                    <td colSpan={6} className="py-8">
-                      <EmptyState
-                        icon={Search}
-                        title="No stocks found"
-                        description="Try adjusting your search"
-                      />
-                    </td>
-                  </tr>
-                ) : (
-                  filteredStocks.map((stock) => (
-                    <tr key={stock.id} className="border-b last:border-0 hover:bg-muted/50 transition-smooth">
-                      <td className="py-3 px-4">
-                        <div className="flex items-center gap-3">
-                          <Avatar className="h-8 w-8">
-                            {stock.logo_url ? (
-                              <AvatarImage src={stock.logo_url} alt={stock.symbol} />
-                            ) : null}
-                            <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
-                              {stock.symbol?.slice(0, 2) || '??'}
-                            </AvatarFallback>
-                          </Avatar>
-                          <span className="font-mono font-semibold">{stock.symbol}</span>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4">
-                        <div>
-                          <p className="font-medium text-sm">{stock.name || stock.company_name || '-'}</p>
-                          <p className="text-xs text-muted-foreground">{stock.sector_name || stock.sector || ''}</p>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <span className="font-mono">Rs. {parseFloat(String(stock.current_price || 0)).toFixed(2)}</span>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <PriceDisplay
-                          value={0}
-                          currency=""
-                          change={stock.change_amount ?? stock.change}
-                          changePercent={stock.change_percentage ?? stock.change_percent}
-                          size="sm"
-                          showIcon={false}
-                          className="justify-end"
-                        />
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <span className="text-sm text-muted-foreground">
-                          {stock.volume ? Number(stock.volume).toLocaleString() : 'N/A'}
-                        </span>
-                      </td>
-                      <td className="py-3 px-4 text-right">
-                        <Button size="sm" variant="ghost">
-                          View
-                        </Button>
-                      </td>
-                    </tr>
-                  ))
-                )}
-              </tbody>
-            </table>
-          </div>
 
-          {/* Load More Button */}
-          {pagination?.has_next && (
-            <div className="flex justify-center pt-4 border-t mt-4">
-              <Button
-                variant="outline"
-                onClick={handleLoadMore}
-                disabled={isLoadingMore}
-                className="gap-2"
-              >
-                {isLoadingMore ? (
-                  <>
-                    <LoadingSpinner size="sm" />
-                    Loading...
-                  </>
-                ) : (
-                  <>
-                    <ChevronDown className="h-4 w-4" />
-                    Load More Stocks ({pagination.total - stocks.length} remaining)
-                  </>
-                )}
-              </Button>
-            </div>
+              {/* Pagination */}
+              {pagination && (
+                <div className="flex flex-col sm:flex-row items-center justify-between gap-4 p-4 border-t">
+                  <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                    <span>Showing</span>
+                    <Select value={String(pageSize)} onValueChange={handlePageSizeChange}>
+                      <SelectTrigger className="h-8 w-[70px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="25">25</SelectItem>
+                        <SelectItem value="50">50</SelectItem>
+                        <SelectItem value="100">100</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <span>
+                      of {pagination.total} stocks
+                    </span>
+                  </div>
+
+                  <div className="flex items-center gap-1">
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handlePageChange(1)}
+                      disabled={currentPage === 1}
+                    >
+                      <ChevronsLeft className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handlePageChange(currentPage - 1)}
+                      disabled={!pagination.has_previous}
+                    >
+                      <ChevronLeft className="h-4 w-4" />
+                    </Button>
+                    <div className="flex items-center gap-1 px-2">
+                      <span className="text-sm font-medium">{currentPage}</span>
+                      <span className="text-sm text-muted-foreground">/</span>
+                      <span className="text-sm text-muted-foreground">{pagination.total_pages}</span>
+                    </div>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handlePageChange(currentPage + 1)}
+                      disabled={!pagination.has_next}
+                    >
+                      <ChevronRight className="h-4 w-4" />
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handlePageChange(pagination.total_pages)}
+                      disabled={currentPage === pagination.total_pages}
+                    >
+                      <ChevronsRight className="h-4 w-4" />
+                    </Button>
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </CardContent>
       </Card>
+
+      {/* Modals */}
+      <FilterModal
+        isOpen={isFilterModalOpen}
+        onClose={() => setIsFilterModalOpen(false)}
+        filters={filters}
+        onApply={handleApplyFilters}
+      />
+      <ColumnsModal
+        isOpen={isColumnsModalOpen}
+        onClose={() => setIsColumnsModalOpen(false)}
+        columns={columns}
+        onApply={setColumns}
+      />
+      <StrategiesModal
+        isOpen={isStrategiesModalOpen}
+        onClose={() => setIsStrategiesModalOpen(false)}
+        onSelectStrategy={handleSelectStrategy}
+      />
+      <StockDetailDrawer
+        stock={selectedStock}
+        isOpen={isDetailDrawerOpen}
+        onClose={() => {
+          setIsDetailDrawerOpen(false);
+          setSelectedStock(null);
+        }}
+      />
     </div>
   );
 }

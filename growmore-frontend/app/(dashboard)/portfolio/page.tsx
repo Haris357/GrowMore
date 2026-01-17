@@ -9,15 +9,16 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LoadingSpinner } from '@/components/common/loading-spinner';
 import { StatCard } from '@/components/common/stat-card';
+import { PortfolioSkeleton, CardSkeleton } from '@/components/common/skeletons';
 import { PriceDisplay } from '@/components/common/price-display';
 import { EmptyState } from '@/components/common/empty-state';
 import {
   Wallet, TrendingUp, TrendingDown, Plus, PieChart, BarChart3,
-  Pencil, Trash2, ArrowUpDown
+  Pencil, Trash2, ArrowUpDown, Download
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { ExportDropdown } from '@/components/common/export-dropdown';
 import { usePortfolioStore } from '@/stores/portfolioStore';
 import { PieChart as RePieChart, Pie, Cell, ResponsiveContainer, Tooltip, Legend } from 'recharts';
 
@@ -56,13 +57,27 @@ interface Transaction {
   transaction_date: string;
 }
 
+interface PortfolioPerformance {
+  portfolio_id: string;
+  total_invested: number;
+  current_value: number;
+  profit_loss: number;
+  profit_loss_percentage: number;
+  holdings_count: number;
+  best_performer?: Holding;
+  worst_performer?: Holding;
+  asset_allocation: Record<string, number>;
+}
+
 const COLORS = ['#3b82f6', '#22c55e', '#f59e0b', '#ef4444', '#8b5cf6', '#06b6d4'];
 
 export default function PortfolioPage() {
   const [portfolios, setPortfolios] = useState<Portfolio[]>([]);
   const [selectedPortfolio, setSelectedPortfolio] = useState<Portfolio | null>(null);
   const [transactions, setTransactions] = useState<Transaction[]>([]);
+  const [performance, setPerformance] = useState<PortfolioPerformance | null>(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLoadingPerformance, setIsLoadingPerformance] = useState(false);
   const [isAddHoldingOpen, setIsAddHoldingOpen] = useState(false);
 
   // Add holding form
@@ -88,6 +103,7 @@ export default function PortfolioPage() {
         const defaultPortfolio = data.find((p: Portfolio) => p.is_default) || data[0];
         setSelectedPortfolio(defaultPortfolio);
         fetchTransactions(defaultPortfolio.id);
+        fetchPerformance(defaultPortfolio.id);
       }
     } catch (error) {
       console.error('Error fetching portfolios:', error);
@@ -106,6 +122,19 @@ export default function PortfolioPage() {
     } catch (error) {
       console.error('Error fetching transactions:', error);
       setTransactions([]);
+    }
+  };
+
+  const fetchPerformance = async (portfolioId: string) => {
+    try {
+      setIsLoadingPerformance(true);
+      const response = await api.get(`/portfolios/${portfolioId}/performance`);
+      setPerformance(response.data);
+    } catch (error) {
+      console.error('Error fetching performance:', error);
+      setPerformance(null);
+    } finally {
+      setIsLoadingPerformance(false);
     }
   };
 
@@ -161,7 +190,7 @@ export default function PortfolioPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner size="lg" />;
+    return <PortfolioSkeleton />;
   }
 
   if (portfolios.length === 0) {
@@ -200,7 +229,10 @@ export default function PortfolioPage() {
             onValueChange={(id) => {
               const portfolio = portfolios.find(p => p.id === id);
               setSelectedPortfolio(portfolio || null);
-              if (portfolio) fetchTransactions(portfolio.id);
+              if (portfolio) {
+                fetchTransactions(portfolio.id);
+                fetchPerformance(portfolio.id);
+              }
             }}
           >
             <SelectTrigger className="w-[200px]">
@@ -214,6 +246,8 @@ export default function PortfolioPage() {
               ))}
             </SelectContent>
           </Select>
+
+          <ExportDropdown type="portfolio" portfolioId={selectedPortfolio?.id} />
 
           <Dialog open={isAddHoldingOpen} onOpenChange={setIsAddHoldingOpen}>
             <DialogTrigger asChild>
@@ -311,6 +345,7 @@ export default function PortfolioPage() {
         <TabsList>
           <TabsTrigger value="holdings">Holdings</TabsTrigger>
           <TabsTrigger value="allocation">Allocation</TabsTrigger>
+          <TabsTrigger value="performance">Performance</TabsTrigger>
           <TabsTrigger value="transactions">Transactions</TabsTrigger>
         </TabsList>
 
@@ -446,6 +481,116 @@ export default function PortfolioPage() {
               </CardContent>
             </Card>
           </div>
+        </TabsContent>
+
+        <TabsContent value="performance" className="mt-4">
+          {isLoadingPerformance ? (
+            <div className="grid gap-6 md:grid-cols-2">
+              <CardSkeleton />
+              <CardSkeleton />
+            </div>
+          ) : performance ? (
+            <div className="grid gap-6 md:grid-cols-2">
+              {/* Best & Worst Performers */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-green-500" />
+                    Best Performer
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {performance.best_performer ? (
+                    <div className="flex items-center justify-between p-4 rounded-lg bg-green-500/10 border border-green-500/20">
+                      <div>
+                        <p className="font-bold text-lg">{performance.best_performer.symbol}</p>
+                        <p className="text-sm text-muted-foreground">{performance.best_performer.name}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-green-600">
+                          +{performance.best_performer.profit_loss_percent?.toFixed(2)}%
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Rs. {performance.best_performer.profit_loss?.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground text-center py-4">No data available</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <TrendingDown className="h-5 w-5 text-red-500" />
+                    Worst Performer
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {performance.worst_performer ? (
+                    <div className="flex items-center justify-between p-4 rounded-lg bg-red-500/10 border border-red-500/20">
+                      <div>
+                        <p className="font-bold text-lg">{performance.worst_performer.symbol}</p>
+                        <p className="text-sm text-muted-foreground">{performance.worst_performer.name}</p>
+                      </div>
+                      <div className="text-right">
+                        <p className="font-bold text-red-600">
+                          {performance.worst_performer.profit_loss_percent?.toFixed(2)}%
+                        </p>
+                        <p className="text-sm text-muted-foreground">
+                          Rs. {performance.worst_performer.profit_loss?.toLocaleString()}
+                        </p>
+                      </div>
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground text-center py-4">No data available</p>
+                  )}
+                </CardContent>
+              </Card>
+
+              {/* Asset Allocation from Performance */}
+              <Card className="md:col-span-2">
+                <CardHeader>
+                  <CardTitle>Asset Allocation Analysis</CardTitle>
+                </CardHeader>
+                <CardContent>
+                  {performance.asset_allocation && Object.keys(performance.asset_allocation).length > 0 ? (
+                    <div className="grid gap-4 md:grid-cols-3">
+                      {Object.entries(performance.asset_allocation).map(([asset, percentage], index) => (
+                        <div
+                          key={asset}
+                          className="p-4 rounded-lg border"
+                        >
+                          <div className="flex items-center gap-2 mb-2">
+                            <div
+                              className="w-3 h-3 rounded-full"
+                              style={{ backgroundColor: COLORS[index % COLORS.length] }}
+                            />
+                            <span className="font-medium capitalize">{asset.replace('_', ' ')}</span>
+                          </div>
+                          <p className="text-2xl font-bold">{Number(percentage).toFixed(1)}%</p>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-muted-foreground text-center py-4">No allocation data</p>
+                  )}
+                </CardContent>
+              </Card>
+            </div>
+          ) : (
+            <Card>
+              <CardContent className="py-8">
+                <EmptyState
+                  icon={BarChart3}
+                  title="No Performance Data"
+                  description="Performance analytics will be available once you have holdings"
+                />
+              </CardContent>
+            </Card>
+          )}
         </TabsContent>
 
         <TabsContent value="transactions" className="mt-4">

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,115 +8,223 @@ import { Label } from '@/components/ui/label';
 import { Badge } from '@/components/ui/badge';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Slider } from '@/components/ui/slider';
-import { LoadingSpinner } from '@/components/common/loading-spinner';
-import { PriceDisplay } from '@/components/common/price-display';
-import { Filter, Search, TrendingUp, TrendingDown, BarChart3, Download, Eye, Plus } from 'lucide-react';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Switch } from '@/components/ui/switch';
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from '@/components/ui/dialog';
+import { TableSkeleton, CardSkeleton, ListItemSkeleton } from '@/components/common/skeletons';
+import {
+  Filter,
+  Search,
+  TrendingUp,
+  TrendingDown,
+  BarChart3,
+  Download,
+  Eye,
+  Plus,
+  Save,
+  Star,
+  Trash2,
+  Play,
+  Loader2,
+  Bell,
+  Bookmark,
+  Sparkles,
+  Zap,
+  Target,
+  Shield,
+  DollarSign,
+  Percent,
+  Activity,
+} from 'lucide-react';
 import { api } from '@/lib/api';
 import Link from 'next/link';
+import { cn } from '@/lib/utils';
 
-interface ScreenerResult {
+interface StockResult {
   id: string;
+  company_id: string;
   symbol: string;
   name: string;
-  sector: string;
-  current_price: number;
-  change_percentage: number;
-  market_cap: number;
-  pe_ratio: number;
-  pb_ratio: number;
-  dividend_yield: number;
-  roe: number;
-  debt_to_equity: number;
-  revenue_growth: number;
-  profit_growth: number;
-  volume: number;
+  sector: string | null;
+  sector_code: string | null;
+  current_price: number | null;
+  change_amount: number | null;
+  change_percentage: number | null;
+  volume: number | null;
+  market_cap: number | null;
+  pe_ratio: number | null;
+  eps: number | null;
+  dividend_yield: number | null;
 }
 
-interface ScreenerFilters {
-  sector: string;
-  market_cap_min: number;
-  market_cap_max: number;
-  pe_min: number;
-  pe_max: number;
-  pb_min: number;
-  pb_max: number;
-  dividend_yield_min: number;
-  roe_min: number;
-  debt_to_equity_max: number;
-  revenue_growth_min: number;
-  profit_growth_min: number;
+interface ScreenResultResponse {
+  stocks: StockResult[];
+  count: number;
+  filters_applied: Record<string, any>;
+  limit: number;
+  offset: number;
 }
 
-const sectors = [
-  'All Sectors',
-  'Banking',
-  'IT',
-  'Pharma',
-  'Auto',
-  'FMCG',
-  'Energy',
-  'Infrastructure',
-  'Metals',
-  'Telecom',
-  'Realty',
-];
+interface Strategy {
+  name: string;
+  slug: string;
+  description: string;
+  icon: string;
+  filters: Record<string, any>;
+  is_featured: boolean;
+}
 
-const presetFilters = [
-  { name: 'High Dividend Yield', filters: { dividend_yield_min: 3 } },
-  { name: 'Low PE Value', filters: { pe_max: 15 } },
-  { name: 'High Growth', filters: { revenue_growth_min: 20, profit_growth_min: 20 } },
-  { name: 'Low Debt', filters: { debt_to_equity_max: 0.5 } },
-  { name: 'Large Cap', filters: { market_cap_min: 50000 } },
-  { name: 'High ROE', filters: { roe_min: 20 } },
-];
+interface SavedScreen {
+  id: string;
+  name: string;
+  filters: Record<string, any>;
+  notifications_enabled: boolean;
+  created_at: string;
+  last_run_at: string | null;
+}
+
+interface FilterCategory {
+  name: string;
+  filters: {
+    name: string;
+    code: string;
+    data_type: string;
+    description: string;
+  }[];
+}
+
+interface Sector {
+  id: string;
+  name: string;
+}
+
+const iconMap: Record<string, any> = {
+  'trending-up': TrendingUp,
+  'trending-down': TrendingDown,
+  'star': Star,
+  'zap': Zap,
+  'target': Target,
+  'shield': Shield,
+  'dollar-sign': DollarSign,
+  'percent': Percent,
+  'activity': Activity,
+  'sparkles': Sparkles,
+};
 
 export default function ScreenerPage() {
-  const [results, setResults] = useState<ScreenerResult[]>([]);
+  const [activeTab, setActiveTab] = useState('custom');
+  const [results, setResults] = useState<StockResult[]>([]);
+  const [totalCount, setTotalCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [showFilters, setShowFilters] = useState(true);
-  const [filters, setFilters] = useState<ScreenerFilters>({
-    sector: 'All Sectors',
-    market_cap_min: 0,
-    market_cap_max: 1000000,
-    pe_min: 0,
-    pe_max: 100,
-    pb_min: 0,
-    pb_max: 20,
-    dividend_yield_min: 0,
-    roe_min: 0,
-    debt_to_equity_max: 5,
-    revenue_growth_min: -50,
-    profit_growth_min: -50,
+
+  // Strategies
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+  const [loadingStrategies, setLoadingStrategies] = useState(true);
+
+  // Saved Screens
+  const [savedScreens, setSavedScreens] = useState<SavedScreen[]>([]);
+  const [loadingSaved, setLoadingSaved] = useState(true);
+
+  // Sectors from backend
+  const [sectors, setSectors] = useState<Sector[]>([]);
+
+  // Filter state
+  const [filters, setFilters] = useState<Record<string, any>>({
+    sector_code: '',
+    price: { min: '', max: '' },
+    change_pct: { min: '', max: '' },
+    market_cap: { min: '', max: '' },
+    pe_ratio: { min: '', max: '' },
+    div_yield: { min: '', max: '' },
+    volume: { min: '', max: '' },
+    sort: 'change_pct_desc',
+    limit: 50,
   });
 
-  const runScreener = async () => {
+  // Save dialog state
+  const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [saveName, setSaveName] = useState('');
+  const [saveNotifications, setSaveNotifications] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+
+  useEffect(() => {
+    fetchStrategies();
+    fetchSavedScreens();
+    fetchSectors();
+  }, []);
+
+  const fetchStrategies = async () => {
     try {
-      setIsLoading(true);
-      const params = new URLSearchParams();
+      const response = await api.get('/screener/strategies');
+      setStrategies(response.data || []);
+    } catch (error) {
+      console.error('Failed to fetch strategies:', error);
+    } finally {
+      setLoadingStrategies(false);
+    }
+  };
 
-      if (filters.sector !== 'All Sectors') {
-        params.append('sector', filters.sector);
-      }
-      if (filters.market_cap_min > 0) {
-        params.append('market_cap_min', (filters.market_cap_min * 10000000).toString());
-      }
-      if (filters.market_cap_max < 1000000) {
-        params.append('market_cap_max', (filters.market_cap_max * 10000000).toString());
-      }
-      if (filters.pe_min > 0) params.append('pe_min', filters.pe_min.toString());
-      if (filters.pe_max < 100) params.append('pe_max', filters.pe_max.toString());
-      if (filters.pb_min > 0) params.append('pb_min', filters.pb_min.toString());
-      if (filters.pb_max < 20) params.append('pb_max', filters.pb_max.toString());
-      if (filters.dividend_yield_min > 0) params.append('dividend_yield_min', filters.dividend_yield_min.toString());
-      if (filters.roe_min > 0) params.append('roe_min', filters.roe_min.toString());
-      if (filters.debt_to_equity_max < 5) params.append('debt_to_equity_max', filters.debt_to_equity_max.toString());
-      if (filters.revenue_growth_min > -50) params.append('revenue_growth_min', filters.revenue_growth_min.toString());
-      if (filters.profit_growth_min > -50) params.append('profit_growth_min', filters.profit_growth_min.toString());
+  const fetchSavedScreens = async () => {
+    try {
+      const response = await api.get('/screener/saved');
+      setSavedScreens(response.data?.screens || []);
+    } catch (error) {
+      console.error('Failed to fetch saved screens:', error);
+    } finally {
+      setLoadingSaved(false);
+    }
+  };
 
-      const response = await api.get(`/screener?${params.toString()}`);
-      // Backend might return items (paginated) or results or direct array
-      const data = response.data?.items || response.data?.results || response.data || [];
-      setResults(Array.isArray(data) ? data : []);
+  const fetchSectors = async () => {
+    try {
+      const response = await api.get('/personalization/options/sectors');
+      setSectors(response.data?.sectors || []);
+    } catch (error) {
+      console.error('Failed to fetch sectors:', error);
+    }
+  };
+
+  const runScreener = async () => {
+    setIsLoading(true);
+    try {
+      const cleanFilters: Record<string, any> = {};
+
+      // Add sector filter
+      if (filters.sector_code) {
+        cleanFilters.sector_code = filters.sector_code;
+      }
+
+      // Add range filters
+      ['price', 'change_pct', 'market_cap', 'pe_ratio', 'div_yield', 'volume'].forEach((key) => {
+        const range = filters[key];
+        if (range?.min !== '' || range?.max !== '') {
+          cleanFilters[key] = {};
+          if (range.min !== '') cleanFilters[key].min = parseFloat(range.min);
+          if (range.max !== '') cleanFilters[key].max = parseFloat(range.max);
+        }
+      });
+
+      // Add sort and limit
+      cleanFilters.sort = filters.sort;
+      cleanFilters.limit = filters.limit;
+
+      const response = await api.post<ScreenResultResponse>('/screener/run', {
+        filters: cleanFilters,
+        limit: filters.limit,
+        offset: 0,
+      });
+
+      setResults(response.data.stocks || []);
+      setTotalCount(response.data.count || 0);
     } catch (error) {
       console.error('Error running screener:', error);
       setResults([]);
@@ -125,55 +233,134 @@ export default function ScreenerPage() {
     }
   };
 
-  const applyPreset = (preset: typeof presetFilters[0]) => {
-    setFilters({
-      ...filters,
-      ...preset.filters,
-    });
+  const runStrategy = async (slug: string) => {
+    setIsLoading(true);
+    setActiveTab('custom');
+    try {
+      const response = await api.post<ScreenResultResponse>(`/screener/strategies/${slug}/run`);
+      setResults(response.data.stocks || []);
+      setTotalCount(response.data.count || 0);
+    } catch (error) {
+      console.error('Error running strategy:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const runSavedScreen = async (screenId: string) => {
+    setIsLoading(true);
+    setActiveTab('custom');
+    try {
+      const response = await api.post<ScreenResultResponse>(`/screener/saved/${screenId}/run`);
+      setResults(response.data.stocks || []);
+      setTotalCount(response.data.count || 0);
+    } catch (error) {
+      console.error('Error running saved screen:', error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const deleteSavedScreen = async (screenId: string) => {
+    try {
+      await api.delete(`/screener/saved/${screenId}`);
+      setSavedScreens((prev) => prev.filter((s) => s.id !== screenId));
+    } catch (error) {
+      console.error('Error deleting saved screen:', error);
+    }
+  };
+
+  const saveCurrentScreen = async () => {
+    if (!saveName.trim()) return;
+
+    setIsSaving(true);
+    try {
+      const cleanFilters: Record<string, any> = {};
+
+      if (filters.sector_code) {
+        cleanFilters.sector_code = filters.sector_code;
+      }
+
+      ['price', 'change_pct', 'market_cap', 'pe_ratio', 'div_yield', 'volume'].forEach((key) => {
+        const range = filters[key];
+        if (range?.min !== '' || range?.max !== '') {
+          cleanFilters[key] = {};
+          if (range.min !== '') cleanFilters[key].min = parseFloat(range.min);
+          if (range.max !== '') cleanFilters[key].max = parseFloat(range.max);
+        }
+      });
+
+      cleanFilters.sort = filters.sort;
+
+      await api.post('/screener/saved', {
+        name: saveName,
+        filters: cleanFilters,
+        notifications_enabled: saveNotifications,
+      });
+
+      await fetchSavedScreens();
+      setSaveDialogOpen(false);
+      setSaveName('');
+      setSaveNotifications(false);
+    } catch (error) {
+      console.error('Error saving screen:', error);
+    } finally {
+      setIsSaving(false);
+    }
   };
 
   const resetFilters = () => {
     setFilters({
-      sector: 'All Sectors',
-      market_cap_min: 0,
-      market_cap_max: 1000000,
-      pe_min: 0,
-      pe_max: 100,
-      pb_min: 0,
-      pb_max: 20,
-      dividend_yield_min: 0,
-      roe_min: 0,
-      debt_to_equity_max: 5,
-      revenue_growth_min: -50,
-      profit_growth_min: -50,
+      sector_code: '',
+      price: { min: '', max: '' },
+      change_pct: { min: '', max: '' },
+      market_cap: { min: '', max: '' },
+      pe_ratio: { min: '', max: '' },
+      div_yield: { min: '', max: '' },
+      volume: { min: '', max: '' },
+      sort: 'change_pct_desc',
+      limit: 50,
     });
   };
 
-  const formatMarketCap = (value: number) => {
-    if (value >= 10000000) {
-      return `Rs. ${(value / 10000000).toFixed(0)} Cr`;
-    } else if (value >= 100000) {
-      return `Rs. ${(value / 100000).toFixed(0)} L`;
+  const formatMarketCap = (value: number | null) => {
+    if (!value) return '-';
+    if (value >= 1e12) {
+      return `PKR ${(value / 1e12).toFixed(2)}T`;
+    } else if (value >= 1e9) {
+      return `PKR ${(value / 1e9).toFixed(2)}B`;
+    } else if (value >= 1e6) {
+      return `PKR ${(value / 1e6).toFixed(2)}M`;
     }
-    return `Rs. ${value.toLocaleString('en-PK')}`;
+    return `PKR ${value.toLocaleString()}`;
+  };
+
+  const formatVolume = (value: number | null) => {
+    if (!value) return '-';
+    if (value >= 1e6) {
+      return `${(value / 1e6).toFixed(2)}M`;
+    } else if (value >= 1e3) {
+      return `${(value / 1e3).toFixed(1)}K`;
+    }
+    return value.toString();
   };
 
   const exportResults = () => {
     const csv = [
-      ['Symbol', 'Name', 'Sector', 'Price', 'Change %', 'Market Cap', 'P/E', 'P/B', 'Div Yield', 'ROE', 'D/E'].join(','),
-      ...results.map(r => [
-        r.symbol,
-        r.name,
-        r.sector,
-        r.current_price,
-        r.change_percentage,
-        r.market_cap,
-        r.pe_ratio,
-        r.pb_ratio,
-        r.dividend_yield,
-        r.roe,
-        r.debt_to_equity,
-      ].join(','))
+      ['Symbol', 'Name', 'Sector', 'Price', 'Change %', 'Volume', 'Market Cap', 'P/E', 'Div Yield'].join(','),
+      ...results.map((r) =>
+        [
+          r.symbol,
+          `"${r.name}"`,
+          r.sector || '',
+          r.current_price || '',
+          r.change_percentage || '',
+          r.volume || '',
+          r.market_cap || '',
+          r.pe_ratio || '',
+          r.dividend_yield || '',
+        ].join(',')
+      ),
     ].join('\n');
 
     const blob = new Blob([csv], { type: 'text/csv' });
@@ -182,6 +369,12 @@ export default function ScreenerPage() {
     a.href = url;
     a.download = 'screener-results.csv';
     a.click();
+    window.URL.revokeObjectURL(url);
+  };
+
+  const getStrategyIcon = (iconName: string) => {
+    const Icon = iconMap[iconName] || BarChart3;
+    return Icon;
   };
 
   return (
@@ -190,295 +383,599 @@ export default function ScreenerPage() {
         <div>
           <h1 className="text-3xl font-bold mb-2">Stock Screener</h1>
           <p className="text-muted-foreground">
-            Filter stocks based on fundamental and technical criteria
+            Filter and find stocks based on your investment criteria
           </p>
         </div>
-        <Button
-          variant="outline"
-          onClick={() => setShowFilters(!showFilters)}
-        >
-          <Filter className="mr-2 h-4 w-4" />
-          {showFilters ? 'Hide' : 'Show'} Filters
-        </Button>
-      </div>
-
-      {/* Preset Filters */}
-      <div className="flex flex-wrap gap-2">
-        {presetFilters.map((preset) => (
-          <Button
-            key={preset.name}
-            variant="outline"
-            size="sm"
-            onClick={() => applyPreset(preset)}
-          >
-            {preset.name}
+        <div className="flex gap-2">
+          <Dialog open={saveDialogOpen} onOpenChange={setSaveDialogOpen}>
+            <DialogTrigger asChild>
+              <Button variant="outline">
+                <Save className="mr-2 h-4 w-4" />
+                Save Screen
+              </Button>
+            </DialogTrigger>
+            <DialogContent>
+              <DialogHeader>
+                <DialogTitle>Save Screen</DialogTitle>
+                <DialogDescription>
+                  Save your current filter criteria to run it again later.
+                </DialogDescription>
+              </DialogHeader>
+              <div className="space-y-4 py-4">
+                <div className="space-y-2">
+                  <Label htmlFor="screen-name">Screen Name</Label>
+                  <Input
+                    id="screen-name"
+                    placeholder="e.g., High Dividend Blue Chips"
+                    value={saveName}
+                    onChange={(e) => setSaveName(e.target.value)}
+                  />
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="space-y-0.5">
+                    <Label>Enable Notifications</Label>
+                    <p className="text-sm text-muted-foreground">
+                      Get notified when new stocks match this screen
+                    </p>
+                  </div>
+                  <Switch checked={saveNotifications} onCheckedChange={setSaveNotifications} />
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => setSaveDialogOpen(false)}>
+                  Cancel
+                </Button>
+                <Button onClick={saveCurrentScreen} disabled={!saveName.trim() || isSaving}>
+                  {isSaving ? (
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  ) : (
+                    <Save className="mr-2 h-4 w-4" />
+                  )}
+                  Save
+                </Button>
+              </DialogFooter>
+            </DialogContent>
+          </Dialog>
+          <Button variant="outline" onClick={() => setShowFilters(!showFilters)}>
+            <Filter className="mr-2 h-4 w-4" />
+            {showFilters ? 'Hide' : 'Show'} Filters
           </Button>
-        ))}
+        </div>
       </div>
 
-      {/* Filters */}
-      {showFilters && (
-        <Card>
-          <CardHeader>
-            <CardTitle className="text-lg">Filter Criteria</CardTitle>
-          </CardHeader>
-          <CardContent className="space-y-6">
-            <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
-              {/* Sector */}
-              <div className="space-y-2">
-                <Label>Sector</Label>
-                <Select
-                  value={filters.sector}
-                  onValueChange={(value) => setFilters({ ...filters, sector: value })}
-                >
-                  <SelectTrigger>
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {sectors.map((sector) => (
-                      <SelectItem key={sector} value={sector}>
-                        {sector}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
+      <Tabs value={activeTab} onValueChange={setActiveTab}>
+        <TabsList>
+          <TabsTrigger value="custom">
+            <Filter className="mr-2 h-4 w-4" />
+            Custom Screen
+          </TabsTrigger>
+          <TabsTrigger value="strategies">
+            <Sparkles className="mr-2 h-4 w-4" />
+            Strategies
+          </TabsTrigger>
+          <TabsTrigger value="saved">
+            <Bookmark className="mr-2 h-4 w-4" />
+            Saved Screens
+          </TabsTrigger>
+        </TabsList>
 
-              {/* Market Cap */}
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <Label>Market Cap (Cr)</Label>
-                  <span className="text-sm text-muted-foreground">
-                    {filters.market_cap_min} - {filters.market_cap_max}
-                  </span>
-                </div>
-                <div className="pt-2">
-                  <Slider
-                    value={[filters.market_cap_min, filters.market_cap_max]}
-                    onValueChange={([min, max]) => setFilters({ ...filters, market_cap_min: min, market_cap_max: max })}
-                    min={0}
-                    max={1000000}
-                    step={1000}
-                  />
-                </div>
-              </div>
+        {/* Custom Screen Tab */}
+        <TabsContent value="custom" className="space-y-6">
+          {/* Filters */}
+          {showFilters && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="text-lg">Filter Criteria</CardTitle>
+                <CardDescription>Set your criteria to find matching stocks</CardDescription>
+              </CardHeader>
+              <CardContent className="space-y-6">
+                <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-4">
+                  {/* Sector */}
+                  <div className="space-y-2">
+                    <Label>Sector</Label>
+                    <Select
+                      value={filters.sector_code}
+                      onValueChange={(value) => setFilters({ ...filters, sector_code: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue placeholder="All Sectors" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="">All Sectors</SelectItem>
+                        {sectors.map((sector) => (
+                          <SelectItem key={sector.id} value={sector.id}>
+                            {sector.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
 
-              {/* P/E Ratio */}
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <Label>P/E Ratio</Label>
-                  <span className="text-sm text-muted-foreground">
-                    {filters.pe_min} - {filters.pe_max}
-                  </span>
-                </div>
-                <div className="pt-2">
-                  <Slider
-                    value={[filters.pe_min, filters.pe_max]}
-                    onValueChange={([min, max]) => setFilters({ ...filters, pe_min: min, pe_max: max })}
-                    min={0}
-                    max={100}
-                    step={1}
-                  />
-                </div>
-              </div>
+                  {/* Price Range */}
+                  <div className="space-y-2">
+                    <Label>Price Range (PKR)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        placeholder="Min"
+                        value={filters.price.min}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            price: { ...filters.price, min: e.target.value },
+                          })
+                        }
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Max"
+                        value={filters.price.max}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            price: { ...filters.price, max: e.target.value },
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
 
-              {/* P/B Ratio */}
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <Label>P/B Ratio</Label>
-                  <span className="text-sm text-muted-foreground">
-                    {filters.pb_min} - {filters.pb_max}
-                  </span>
-                </div>
-                <div className="pt-2">
-                  <Slider
-                    value={[filters.pb_min, filters.pb_max]}
-                    onValueChange={([min, max]) => setFilters({ ...filters, pb_min: min, pb_max: max })}
-                    min={0}
-                    max={20}
-                    step={0.5}
-                  />
-                </div>
-              </div>
+                  {/* Change % Range */}
+                  <div className="space-y-2">
+                    <Label>Change % Range</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        placeholder="Min"
+                        value={filters.change_pct.min}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            change_pct: { ...filters.change_pct, min: e.target.value },
+                          })
+                        }
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Max"
+                        value={filters.change_pct.max}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            change_pct: { ...filters.change_pct, max: e.target.value },
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
 
-              {/* Dividend Yield */}
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <Label>Min Dividend Yield (%)</Label>
-                  <span className="text-sm text-muted-foreground">{filters.dividend_yield_min}%</span>
-                </div>
-                <div className="pt-2">
-                  <Slider
-                    value={[filters.dividend_yield_min]}
-                    onValueChange={([value]) => setFilters({ ...filters, dividend_yield_min: value })}
-                    min={0}
-                    max={10}
-                    step={0.5}
-                  />
-                </div>
-              </div>
+                  {/* Market Cap Range */}
+                  <div className="space-y-2">
+                    <Label>Market Cap (Millions PKR)</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        placeholder="Min"
+                        value={filters.market_cap.min}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            market_cap: {
+                              ...filters.market_cap,
+                              min: e.target.value ? parseFloat(e.target.value) * 1e6 : '',
+                            },
+                          })
+                        }
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Max"
+                        value={filters.market_cap.max}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            market_cap: {
+                              ...filters.market_cap,
+                              max: e.target.value ? parseFloat(e.target.value) * 1e6 : '',
+                            },
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
 
-              {/* ROE */}
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <Label>Min ROE (%)</Label>
-                  <span className="text-sm text-muted-foreground">{filters.roe_min}%</span>
-                </div>
-                <div className="pt-2">
-                  <Slider
-                    value={[filters.roe_min]}
-                    onValueChange={([value]) => setFilters({ ...filters, roe_min: value })}
-                    min={0}
-                    max={50}
-                    step={1}
-                  />
-                </div>
-              </div>
+                  {/* P/E Ratio Range */}
+                  <div className="space-y-2">
+                    <Label>P/E Ratio Range</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        placeholder="Min"
+                        value={filters.pe_ratio.min}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            pe_ratio: { ...filters.pe_ratio, min: e.target.value },
+                          })
+                        }
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Max"
+                        value={filters.pe_ratio.max}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            pe_ratio: { ...filters.pe_ratio, max: e.target.value },
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
 
-              {/* Debt to Equity */}
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <Label>Max Debt/Equity</Label>
-                  <span className="text-sm text-muted-foreground">{filters.debt_to_equity_max}</span>
-                </div>
-                <div className="pt-2">
-                  <Slider
-                    value={[filters.debt_to_equity_max]}
-                    onValueChange={([value]) => setFilters({ ...filters, debt_to_equity_max: value })}
-                    min={0}
-                    max={5}
-                    step={0.1}
-                  />
-                </div>
-              </div>
+                  {/* Dividend Yield Range */}
+                  <div className="space-y-2">
+                    <Label>Dividend Yield % Range</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        placeholder="Min"
+                        value={filters.div_yield.min}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            div_yield: { ...filters.div_yield, min: e.target.value },
+                          })
+                        }
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Max"
+                        value={filters.div_yield.max}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            div_yield: { ...filters.div_yield, max: e.target.value },
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
 
-              {/* Revenue Growth */}
-              <div className="space-y-2">
-                <div className="flex justify-between">
-                  <Label>Min Revenue Growth (%)</Label>
-                  <span className="text-sm text-muted-foreground">{filters.revenue_growth_min}%</span>
-                </div>
-                <div className="pt-2">
-                  <Slider
-                    value={[filters.revenue_growth_min]}
-                    onValueChange={([value]) => setFilters({ ...filters, revenue_growth_min: value })}
-                    min={-50}
-                    max={100}
-                    step={5}
-                  />
-                </div>
-              </div>
-            </div>
+                  {/* Volume Range */}
+                  <div className="space-y-2">
+                    <Label>Volume Range</Label>
+                    <div className="flex gap-2">
+                      <Input
+                        type="number"
+                        placeholder="Min"
+                        value={filters.volume.min}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            volume: { ...filters.volume, min: e.target.value },
+                          })
+                        }
+                      />
+                      <Input
+                        type="number"
+                        placeholder="Max"
+                        value={filters.volume.max}
+                        onChange={(e) =>
+                          setFilters({
+                            ...filters,
+                            volume: { ...filters.volume, max: e.target.value },
+                          })
+                        }
+                      />
+                    </div>
+                  </div>
 
-            <div className="flex gap-2">
-              <Button onClick={runScreener} className="flex-1">
-                <Search className="mr-2 h-4 w-4" />
-                Run Screener
-              </Button>
-              <Button variant="outline" onClick={resetFilters}>
-                Reset
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-      )}
+                  {/* Sort By */}
+                  <div className="space-y-2">
+                    <Label>Sort By</Label>
+                    <Select
+                      value={filters.sort}
+                      onValueChange={(value) => setFilters({ ...filters, sort: value })}
+                    >
+                      <SelectTrigger>
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="change_pct_desc">Change % (High to Low)</SelectItem>
+                        <SelectItem value="change_pct_asc">Change % (Low to High)</SelectItem>
+                        <SelectItem value="volume_desc">Volume (High to Low)</SelectItem>
+                        <SelectItem value="market_cap_desc">Market Cap (High to Low)</SelectItem>
+                        <SelectItem value="price_desc">Price (High to Low)</SelectItem>
+                        <SelectItem value="price_asc">Price (Low to High)</SelectItem>
+                        <SelectItem value="div_yield_desc">Dividend Yield (High to Low)</SelectItem>
+                        <SelectItem value="pe_ratio_asc">P/E (Low to High)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </div>
+                </div>
 
-      {/* Results */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle>Results</CardTitle>
-              <CardDescription>
-                {results.length > 0 ? `${results.length} stocks match your criteria` : 'Run the screener to see results'}
-              </CardDescription>
-            </div>
-            {results.length > 0 && (
-              <Button variant="outline" size="sm" onClick={exportResults}>
-                <Download className="mr-2 h-4 w-4" />
-                Export CSV
-              </Button>
-            )}
-          </div>
-        </CardHeader>
-        <CardContent>
-          {isLoading ? (
-            <div className="py-12">
-              <LoadingSpinner size="lg" />
-            </div>
-          ) : results.length > 0 ? (
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4 font-medium">Stock</th>
-                    <th className="text-right py-3 px-4 font-medium">Price</th>
-                    <th className="text-right py-3 px-4 font-medium">Change</th>
-                    <th className="text-right py-3 px-4 font-medium">Market Cap</th>
-                    <th className="text-right py-3 px-4 font-medium">P/E</th>
-                    <th className="text-right py-3 px-4 font-medium">P/B</th>
-                    <th className="text-right py-3 px-4 font-medium">Div Yield</th>
-                    <th className="text-right py-3 px-4 font-medium">ROE</th>
-                    <th className="text-center py-3 px-4 font-medium">Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {results.map((stock) => (
-                    <tr key={stock.id} className="border-b hover:bg-muted/50 transition-colors">
-                      <td className="py-3 px-4">
-                        <div>
-                          <p className="font-medium">{stock.symbol}</p>
-                          <p className="text-sm text-muted-foreground">{stock.name}</p>
-                        </div>
-                      </td>
-                      <td className="text-right py-3 px-4 font-mono">
-                        Rs. {stock.current_price?.toFixed(2)}
-                      </td>
-                      <td className="text-right py-3 px-4">
-                        <span className={stock.change_percentage >= 0 ? 'text-green-600' : 'text-red-600'}>
-                          {stock.change_percentage >= 0 ? '+' : ''}{stock.change_percentage?.toFixed(2)}%
-                        </span>
-                      </td>
-                      <td className="text-right py-3 px-4 font-mono text-sm">
-                        {formatMarketCap(stock.market_cap)}
-                      </td>
-                      <td className="text-right py-3 px-4 font-mono text-sm">
-                        {stock.pe_ratio?.toFixed(2)}
-                      </td>
-                      <td className="text-right py-3 px-4 font-mono text-sm">
-                        {stock.pb_ratio?.toFixed(2)}
-                      </td>
-                      <td className="text-right py-3 px-4 font-mono text-sm">
-                        {stock.dividend_yield?.toFixed(2)}%
-                      </td>
-                      <td className="text-right py-3 px-4 font-mono text-sm">
-                        {stock.roe?.toFixed(2)}%
-                      </td>
-                      <td className="text-center py-3 px-4">
-                        <div className="flex justify-center gap-1">
-                          <Button variant="ghost" size="icon" asChild>
-                            <Link href={`/stocks/${stock.symbol}`}>
-                              <Eye className="h-4 w-4" />
-                            </Link>
-                          </Button>
-                          <Button variant="ghost" size="icon">
-                            <Plus className="h-4 w-4" />
-                          </Button>
-                        </div>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          ) : (
-            <div className="text-center py-12 text-muted-foreground">
-              <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
-              <p>Set your criteria and run the screener to find stocks</p>
-            </div>
+                <div className="flex gap-2">
+                  <Button onClick={runScreener} className="flex-1" disabled={isLoading}>
+                    {isLoading ? (
+                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    ) : (
+                      <Search className="mr-2 h-4 w-4" />
+                    )}
+                    Run Screener
+                  </Button>
+                  <Button variant="outline" onClick={resetFilters}>
+                    Reset
+                  </Button>
+                </div>
+              </CardContent>
+            </Card>
           )}
-        </CardContent>
-      </Card>
+
+          {/* Results */}
+          <Card>
+            <CardHeader>
+              <div className="flex items-center justify-between">
+                <div>
+                  <CardTitle>Results</CardTitle>
+                  <CardDescription>
+                    {results.length > 0
+                      ? `${totalCount} stocks match your criteria (showing ${results.length})`
+                      : 'Run the screener to see results'}
+                  </CardDescription>
+                </div>
+                {results.length > 0 && (
+                  <Button variant="outline" size="sm" onClick={exportResults}>
+                    <Download className="mr-2 h-4 w-4" />
+                    Export CSV
+                  </Button>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent>
+              {isLoading ? (
+                <div className="py-12 flex justify-center">
+                  <TableSkeleton rows={10} columns={8} />
+                </div>
+              ) : results.length > 0 ? (
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="border-b">
+                        <th className="text-left py-3 px-4 font-medium">Stock</th>
+                        <th className="text-right py-3 px-4 font-medium">Price</th>
+                        <th className="text-right py-3 px-4 font-medium">Change</th>
+                        <th className="text-right py-3 px-4 font-medium">Volume</th>
+                        <th className="text-right py-3 px-4 font-medium">Market Cap</th>
+                        <th className="text-right py-3 px-4 font-medium">P/E</th>
+                        <th className="text-right py-3 px-4 font-medium">Div Yield</th>
+                        <th className="text-center py-3 px-4 font-medium">Actions</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {results.map((stock) => (
+                        <tr key={stock.id} className="border-b hover:bg-muted/50 transition-colors">
+                          <td className="py-3 px-4">
+                            <div>
+                              <p className="font-medium">{stock.symbol}</p>
+                              <p className="text-sm text-muted-foreground truncate max-w-[200px]">
+                                {stock.name}
+                              </p>
+                              {stock.sector && (
+                                <Badge variant="outline" className="mt-1 text-xs">
+                                  {stock.sector}
+                                </Badge>
+                              )}
+                            </div>
+                          </td>
+                          <td className="text-right py-3 px-4 font-mono">
+                            {stock.current_price ? `PKR ${stock.current_price.toFixed(2)}` : '-'}
+                          </td>
+                          <td className="text-right py-3 px-4">
+                            {stock.change_percentage !== null ? (
+                              <span
+                                className={cn(
+                                  'flex items-center justify-end gap-1',
+                                  stock.change_percentage >= 0 ? 'text-green-600' : 'text-red-600'
+                                )}
+                              >
+                                {stock.change_percentage >= 0 ? (
+                                  <TrendingUp className="h-3 w-3" />
+                                ) : (
+                                  <TrendingDown className="h-3 w-3" />
+                                )}
+                                {stock.change_percentage >= 0 ? '+' : ''}
+                                {stock.change_percentage.toFixed(2)}%
+                              </span>
+                            ) : (
+                              '-'
+                            )}
+                          </td>
+                          <td className="text-right py-3 px-4 font-mono text-sm">
+                            {formatVolume(stock.volume)}
+                          </td>
+                          <td className="text-right py-3 px-4 font-mono text-sm">
+                            {formatMarketCap(stock.market_cap)}
+                          </td>
+                          <td className="text-right py-3 px-4 font-mono text-sm">
+                            {stock.pe_ratio?.toFixed(2) || '-'}
+                          </td>
+                          <td className="text-right py-3 px-4 font-mono text-sm">
+                            {stock.dividend_yield ? `${stock.dividend_yield.toFixed(2)}%` : '-'}
+                          </td>
+                          <td className="text-center py-3 px-4">
+                            <div className="flex justify-center gap-1">
+                              <Button variant="ghost" size="icon" asChild>
+                                <Link href={`/stocks/${stock.symbol}`}>
+                                  <Eye className="h-4 w-4" />
+                                </Link>
+                              </Button>
+                              <Button variant="ghost" size="icon">
+                                <Plus className="h-4 w-4" />
+                              </Button>
+                            </div>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <BarChart3 className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>Set your criteria and run the screener to find stocks</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Strategies Tab */}
+        <TabsContent value="strategies" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Pre-built Strategies</CardTitle>
+              <CardDescription>
+                Use expert-designed screening strategies to find stocks
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loadingStrategies ? (
+                <div className="py-12 flex justify-center">
+                  <TableSkeleton rows={10} columns={8} />
+                </div>
+              ) : strategies.length > 0 ? (
+                <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-3">
+                  {strategies.map((strategy) => {
+                    const Icon = getStrategyIcon(strategy.icon);
+                    return (
+                      <Card
+                        key={strategy.slug}
+                        className={cn(
+                          'cursor-pointer transition-all hover:shadow-md',
+                          strategy.is_featured && 'border-primary/50'
+                        )}
+                      >
+                        <CardHeader className="pb-2">
+                          <div className="flex items-center justify-between">
+                            <div className="h-10 w-10 rounded-lg bg-primary/10 flex items-center justify-center">
+                              <Icon className="h-5 w-5 text-primary" />
+                            </div>
+                            {strategy.is_featured && (
+                              <Badge variant="secondary">
+                                <Star className="mr-1 h-3 w-3" />
+                                Featured
+                              </Badge>
+                            )}
+                          </div>
+                          <CardTitle className="text-lg">{strategy.name}</CardTitle>
+                          <CardDescription className="text-sm">
+                            {strategy.description}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="pt-0">
+                          <Button
+                            className="w-full"
+                            onClick={() => runStrategy(strategy.slug)}
+                            disabled={isLoading}
+                          >
+                            {isLoading ? (
+                              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            ) : (
+                              <Play className="mr-2 h-4 w-4" />
+                            )}
+                            Run Strategy
+                          </Button>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Sparkles className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p>No strategies available</p>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        {/* Saved Screens Tab */}
+        <TabsContent value="saved" className="space-y-6">
+          <Card>
+            <CardHeader>
+              <CardTitle>Saved Screens</CardTitle>
+              <CardDescription>Your custom saved screening criteria</CardDescription>
+            </CardHeader>
+            <CardContent>
+              {loadingSaved ? (
+                <div className="py-12 flex justify-center">
+                  <TableSkeleton rows={10} columns={8} />
+                </div>
+              ) : savedScreens.length > 0 ? (
+                <div className="space-y-4">
+                  {savedScreens.map((screen) => (
+                    <div
+                      key={screen.id}
+                      className="flex items-center justify-between p-4 rounded-lg border hover:bg-muted/50 transition-colors"
+                    >
+                      <div className="flex items-center gap-4">
+                        <div className="h-10 w-10 rounded-lg bg-muted flex items-center justify-center">
+                          <Filter className="h-5 w-5 text-muted-foreground" />
+                        </div>
+                        <div>
+                          <div className="flex items-center gap-2">
+                            <h4 className="font-medium">{screen.name}</h4>
+                            {screen.notifications_enabled && (
+                              <Badge variant="outline" className="text-xs">
+                                <Bell className="mr-1 h-3 w-3" />
+                                Alerts On
+                              </Badge>
+                            )}
+                          </div>
+                          <p className="text-sm text-muted-foreground">
+                            {Object.keys(screen.filters).length} filters applied
+                          </p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Button
+                          size="sm"
+                          onClick={() => runSavedScreen(screen.id)}
+                          disabled={isLoading}
+                        >
+                          {isLoading ? (
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          ) : (
+                            <Play className="mr-2 h-4 w-4" />
+                          )}
+                          Run
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          onClick={() => deleteSavedScreen(screen.id)}
+                        >
+                          <Trash2 className="h-4 w-4 text-red-500" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Bookmark className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <p className="mb-4">No saved screens yet</p>
+                  <Button variant="outline" onClick={() => setActiveTab('custom')}>
+                    Create Your First Screen
+                  </Button>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

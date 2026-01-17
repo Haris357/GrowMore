@@ -8,12 +8,13 @@ import { Badge } from '@/components/ui/badge';
 import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { LoadingSpinner } from '@/components/common/loading-spinner';
+import { TableSkeleton, StatCardSkeleton } from '@/components/common/skeletons';
 import { PriceDisplay } from '@/components/common/price-display';
 import { EmptyState } from '@/components/common/empty-state';
-import { Eye, Plus, Trash2, Bell, BellOff, Search } from 'lucide-react';
+import { Eye, Plus, Trash2, Bell, BellOff, Search, Download } from 'lucide-react';
 import { api } from '@/lib/api';
 import { useWatchlistStore } from '@/stores/watchlistStore';
+import { ExportDropdown } from '@/components/common/export-dropdown';
 
 interface WatchlistItem {
   id: string;
@@ -156,7 +157,18 @@ export default function WatchlistPage() {
   };
 
   if (isLoading) {
-    return <LoadingSpinner size="lg" />;
+    return (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between">
+          <div className="space-y-2">
+            <div className="h-8 w-32 bg-muted animate-pulse rounded" />
+            <div className="h-4 w-48 bg-muted animate-pulse rounded" />
+          </div>
+          <div className="h-10 w-36 bg-muted animate-pulse rounded" />
+        </div>
+        <TableSkeleton rows={10} columns={6} />
+      </div>
+    );
   }
 
   if (watchlists.length === 0) {
@@ -200,6 +212,10 @@ export default function WatchlistPage() {
               ))}
             </SelectContent>
           </Select>
+
+          {selectedWatchlist && (
+            <ExportDropdown type="watchlist" watchlistId={selectedWatchlist.id} />
+          )}
 
           <Dialog open={isAddItemOpen} onOpenChange={setIsAddItemOpen}>
             <DialogTrigger asChild>

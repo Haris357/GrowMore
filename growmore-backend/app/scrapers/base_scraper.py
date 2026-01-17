@@ -44,8 +44,12 @@ class BaseScraper(ABC):
     async def fetch(self, url: str) -> Optional[str]:
         for attempt in range(self.max_retries):
             try:
-                async with httpx.AsyncClient(timeout=self.timeout) as client:
-                    response = await client.get(url, headers=self.headers, follow_redirects=True)
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(self.timeout, connect=15.0),
+                    verify=False,  # Skip SSL verification for problematic sites
+                    follow_redirects=True,
+                ) as client:
+                    response = await client.get(url, headers=self.headers)
                     response.raise_for_status()
                     return response.text
             except httpx.HTTPStatusError as e:

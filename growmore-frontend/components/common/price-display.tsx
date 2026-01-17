@@ -8,6 +8,7 @@ interface PriceDisplayProps {
   changePercent?: number;
   size?: 'sm' | 'md' | 'lg';
   showIcon?: boolean;
+  showValue?: boolean;
   className?: string;
 }
 
@@ -18,6 +19,7 @@ export function PriceDisplay({
   changePercent,
   size = 'md',
   showIcon = true,
+  showValue = true,
   className,
 }: PriceDisplayProps) {
   // Ensure values are numbers (API might return strings)
@@ -49,9 +51,11 @@ export function PriceDisplay({
 
   return (
     <div className={cn('flex items-center gap-2', className)}>
-      <span className={cn('font-mono', sizeClasses[size])}>
-        {currency} {numValue.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
-      </span>
+      {showValue && (
+        <span className={cn('font-mono', sizeClasses[size])}>
+          {currency} {numValue.toLocaleString('en-PK', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+        </span>
+      )}
       {change !== undefined && changePercent !== undefined && (
         <span
           className={cn(

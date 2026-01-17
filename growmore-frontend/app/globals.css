@@ -6,72 +6,93 @@
 
 @layer base {
   :root {
+    /* Light Theme - White & Green (Upwork-inspired) */
     --background: 0 0% 100%;
-    --foreground: 222 47% 11%;
+    --foreground: 220 13% 18%;
     --card: 0 0% 100%;
-    --card-foreground: 222 47% 11%;
+    --card-foreground: 220 13% 18%;
     --popover: 0 0% 100%;
-    --popover-foreground: 222 47% 11%;
-    --primary: 217 91% 60%;
+    --popover-foreground: 220 13% 18%;
+
+    /* Primary Green - Upwork-style */
+    --primary: 145 63% 42%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 142 71% 45%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 210 40% 96%;
-    --muted-foreground: 215 16% 47%;
-    --accent: 210 40% 96%;
-    --accent-foreground: 222 47% 11%;
+
+    /* Secondary - Lighter Green */
+    --secondary: 145 45% 94%;
+    --secondary-foreground: 145 63% 32%;
+
+    --muted: 220 14% 96%;
+    --muted-foreground: 220 9% 46%;
+    --accent: 145 45% 94%;
+    --accent-foreground: 145 63% 32%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 214 32% 91%;
-    --input: 214 32% 91%;
-    --ring: 217 91% 60%;
-    --success: 142 71% 45%;
+    --border: 220 13% 91%;
+    --input: 220 13% 91%;
+    --ring: 145 63% 42%;
+
+    /* Status Colors */
+    --success: 145 63% 42%;
     --warning: 38 92% 50%;
-    --info: 217 91% 60%;
-    --gain: 142 71% 45%;
+    --info: 199 89% 48%;
+    --gain: 145 63% 42%;
     --loss: 0 84% 60%;
     --gold: 43 96% 56%;
     --gold-dark: 36 90% 45%;
+
     --radius: 0.5rem;
-    --chart-1: 217 91% 60%;
-    --chart-2: 142 71% 45%;
+
+    /* Chart Colors - Green-focused */
+    --chart-1: 145 63% 42%;
+    --chart-2: 145 63% 32%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --chart-5: 199 89% 48%;
   }
 
   .dark {
-    --background: 222 47% 4%;
-    --foreground: 210 40% 98%;
-    --card: 217 33% 12%;
-    --card-foreground: 210 40% 98%;
-    --popover: 217 33% 12%;
-    --popover-foreground: 210 40% 98%;
-    --primary: 217 91% 60%;
+    /* Dark Theme - Black & Green */
+    --background: 220 13% 8%;
+    --foreground: 0 0% 95%;
+    --card: 220 13% 11%;
+    --card-foreground: 0 0% 95%;
+    --popover: 220 13% 11%;
+    --popover-foreground: 0 0% 95%;
+
+    /* Primary Green - Brighter for dark mode */
+    --primary: 145 63% 49%;
     --primary-foreground: 0 0% 100%;
-    --secondary: 142 71% 45%;
-    --secondary-foreground: 0 0% 100%;
-    --muted: 217 33% 17%;
-    --muted-foreground: 215 20% 65%;
-    --accent: 217 33% 17%;
-    --accent-foreground: 210 40% 98%;
-    --destructive: 0 63% 31%;
-    --destructive-foreground: 210 40% 98%;
-    --border: 217 33% 17%;
-    --input: 217 33% 17%;
-    --ring: 217 91% 60%;
-    --success: 142 71% 45%;
+
+    /* Secondary - Dark Green tint */
+    --secondary: 145 30% 18%;
+    --secondary-foreground: 145 63% 70%;
+
+    --muted: 220 13% 15%;
+    --muted-foreground: 220 9% 60%;
+    --accent: 145 30% 18%;
+    --accent-foreground: 145 63% 70%;
+    --destructive: 0 63% 45%;
+    --destructive-foreground: 0 0% 100%;
+    --border: 220 13% 18%;
+    --input: 220 13% 18%;
+    --ring: 145 63% 49%;
+
+    /* Status Colors */
+    --success: 145 63% 49%;
     --warning: 38 92% 50%;
-    --info: 217 91% 60%;
-    --gain: 142 71% 45%;
+    --info: 199 89% 48%;
+    --gain: 145 63% 49%;
     --loss: 0 84% 60%;
     --gold: 43 96% 56%;
     --gold-dark: 36 90% 45%;
-    --chart-1: 217 91% 60%;
-    --chart-2: 142 71% 45%;
+
+    /* Chart Colors - Green-focused */
+    --chart-1: 145 63% 49%;
+    --chart-2: 145 63% 38%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
-    --chart-5: 340 75% 55%;
+    --chart-5: 199 89% 48%;
   }
 }
 
@@ -87,23 +108,27 @@
   }
 
   h1, h2, h3, h4, h5, h6 {
-    @apply font-semibold tracking-tight;
+    @apply font-semibold;
+    letter-spacing: -0.02em;
   }
 
   h1 {
-    @apply text-4xl;
+    @apply text-4xl font-bold;
+    letter-spacing: -0.04em;
   }
 
   h2 {
-    @apply text-3xl;
+    @apply text-3xl font-bold;
+    letter-spacing: -0.03em;
   }
 
   h3 {
-    @apply text-2xl;
+    @apply text-2xl font-semibold;
+    letter-spacing: -0.02em;
   }
 
   h4 {
-    @apply text-xl;
+    @apply text-xl font-semibold;
   }
 }
 
@@ -143,6 +168,14 @@
   .animate-slide-up {
     animation: slide-up 0.3s ease-out;
   }
+
+  .animate-slide-in-left {
+    animation: slide-in-left 0.3s ease-out;
+  }
+
+  .animate-slide-in-right {
+    animation: slide-in-right 0.3s ease-out;
+  }
 }
 
 @keyframes fade-in {
@@ -162,5 +195,23 @@
   to {
     transform: translateY(0);
     opacity: 1;
+  }
+}
+
+@keyframes slide-in-left {
+  from {
+    transform: translateX(-100%);
+  }
+  to {
+    transform: translateX(0);
+  }
+}
+
+@keyframes slide-in-right {
+  from {
+    transform: translateX(100%);
+  }
+  to {
+    transform: translateX(0);
   }
 }

@@ -1,6 +1,7 @@
 'use client';
 
-import { Bell, Moon, Sun, User, LogOut } from 'lucide-react';
+import Link from 'next/link';
+import { Bell, Moon, Sun, LogOut, Calculator, Settings } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -16,9 +17,14 @@ import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
 import { Badge } from '@/components/ui/badge';
 import { useAuthStore } from '@/stores/authStore';
 import { useNotificationStore } from '@/stores/notificationStore';
+import { GlobalSearch } from '@/components/common/global-search';
 import { toast } from 'sonner';
 
-export function Header() {
+interface HeaderProps {
+  onNotificationClick: () => void;
+}
+
+export function Header({ onNotificationClick }: HeaderProps) {
   const { theme, setTheme } = useTheme();
   const router = useRouter();
   const user = useAuthStore(state => state.user);
@@ -45,11 +51,15 @@ export function Header() {
   };
 
   return (
-    <header className="sticky top-0 z-40 border-b bg-card/95 backdrop-blur supports-[backdrop-filter]:bg-card/60">
-      <div className="flex h-16 items-center gap-4 px-6">
-        <div className="flex-1" />
+    <header className="sticky top-0 z-10 border-b bg-background">
+      <div className="flex h-14 items-center gap-4 px-4">
+        {/* Global Search */}
+        <div className="flex-1">
+          <GlobalSearch />
+        </div>
 
         <div className="flex items-center gap-2">
+          {/* Theme Toggle */}
           <Button
             variant="ghost"
             size="icon"
@@ -60,7 +70,13 @@ export function Header() {
             <span className="sr-only">Toggle theme</span>
           </Button>
 
-          <Button variant="ghost" size="icon" className="relative" onClick={() => router.push('/notifications')}>
+          {/* Notifications */}
+          <Button
+            variant="ghost"
+            size="icon"
+            className="relative"
+            onClick={onNotificationClick}
+          >
             <Bell className="h-5 w-5" />
             {unreadCount > 0 && (
               <Badge
@@ -72,12 +88,15 @@ export function Header() {
             )}
           </Button>
 
+          {/* User Menu */}
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
               <Button variant="ghost" className="relative h-10 w-10 rounded-full">
                 <Avatar className="h-10 w-10">
                   <AvatarImage src={user?.photo_url} alt={user?.display_name} />
-                  <AvatarFallback>{user?.display_name ? getInitials(user.display_name) : 'U'}</AvatarFallback>
+                  <AvatarFallback className="bg-primary/10 text-primary">
+                    {user?.display_name ? getInitials(user.display_name) : 'U'}
+                  </AvatarFallback>
                 </Avatar>
               </Button>
             </DropdownMenuTrigger>
@@ -89,12 +108,20 @@ export function Header() {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={() => router.push('/settings')}>
-                <User className="mr-2 h-4 w-4" />
-                <span>Settings</span>
+              <DropdownMenuItem asChild>
+                <Link href="/calculators" className="flex items-center">
+                  <Calculator className="mr-2 h-4 w-4" />
+                  <span>Calculators</span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link href="/settings" className="flex items-center">
+                  <Settings className="mr-2 h-4 w-4" />
+                  <span>Settings</span>
+                </Link>
               </DropdownMenuItem>
               <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleLogout}>
+              <DropdownMenuItem onClick={handleLogout} className="text-destructive focus:text-destructive">
                 <LogOut className="mr-2 h-4 w-4" />
                 <span>Log out</span>
               </DropdownMenuItem>
