@@ -11,6 +11,10 @@ from app.schemas.stock import (
     StockHistoryListResponse,
     TopStockResponse,
     CompanyResponse,
+    FinancialStatementsListResponse,
+    FinancialStatementResponse,
+    StockRatingsResponse,
+    RatingMetric,
 )
 from app.schemas.common import PaginatedResponse
 
@@ -48,7 +52,6 @@ async def list_stocks(
             name=company.get("name", ""),
             logo_url=company.get("logo_url"),
             sector_name=sector.get("name") if sector else None,
-            # Price Data
             current_price=item.get("current_price"),
             open_price=item.get("open_price"),
             high_price=item.get("high_price"),
@@ -58,34 +61,28 @@ async def list_stocks(
             change_percentage=item.get("change_percentage"),
             volume=item.get("volume"),
             avg_volume=item.get("avg_volume"),
-            # 52 Week
             week_52_high=item.get("week_52_high"),
             week_52_low=item.get("week_52_low"),
-            # Valuation
             market_cap=item.get("market_cap"),
             pe_ratio=item.get("pe_ratio"),
             pb_ratio=item.get("pb_ratio"),
             ps_ratio=item.get("ps_ratio"),
             peg_ratio=item.get("peg_ratio"),
             ev_ebitda=item.get("ev_ebitda"),
-            # Per Share
             eps=item.get("eps"),
             book_value=item.get("book_value"),
             dps=item.get("dps"),
             dividend_yield=item.get("dividend_yield"),
-            # Profitability
             roe=item.get("roe"),
             roa=item.get("roa"),
             roce=item.get("roce"),
             gross_margin=item.get("gross_margin"),
             operating_margin=item.get("operating_margin"),
             net_margin=item.get("net_margin"),
-            # Leverage
             debt_to_equity=item.get("debt_to_equity"),
             debt_to_assets=item.get("debt_to_assets"),
             current_ratio=item.get("current_ratio"),
             quick_ratio=item.get("quick_ratio"),
-            # Growth
             revenue_growth=item.get("revenue_growth"),
             earnings_growth=item.get("earnings_growth"),
             profit_growth=item.get("profit_growth"),
@@ -219,7 +216,7 @@ async def get_stock(stock_id: UUID, db=Depends(get_db)):
 @router.get("/{stock_id}/history", response_model=StockHistoryListResponse)
 async def get_stock_history(
     stock_id: UUID,
-    period: str = Query(default="1M", pattern="^(1W|1M|3M|6M|1Y)$"),
+    period: str = Query(default="1M", pattern="^(1W|1M|3M|6M|1Y|2Y|3Y|5Y)$"),
     db=Depends(get_db),
 ):
     stock_service = StockService(db)
@@ -231,3 +228,32 @@ async def get_stock_history(
         history=result["history"],
         period=result["period"],
     )
+
+
+@router.get("/{stock_id}/financials", response_model=FinancialStatementsListResponse)
+async def get_stock_financials(
+    stock_id: UUID,
+    period_type: str = Query(default="annual", pattern="^(annual|quarterly)$"),
+    limit: int = Query(default=5, ge=1, le=20),
+    db=Depends(get_db),
+):
+    """Get financial statements (income, balance sheet, cash flow) for a stock."""
+    stock_service = StockService(db)
+    result = await stock_service.get_financials(stock_id, period_type, limit)
+
+    return FinancialStatementsListResponse(
+        stock_id=result["stock_id"],
+        symbol=result["symbol"],
+        statements=[FinancialStatementResponse(**s) for s in result["statements"]],
+        period_type=period_type,
+    )
+
+
+@router.get("/{stock_id}/ratings", response_model=StockRatingsResponse)
+async def get_stock_ratings(
+    stock_id: UUID,
+    db=Depends(get_db),
+):
+    """Get computed ratings/metrics for a stock with Good/Bad indicators."""
+    stock_service = StockService(db)
+    return await stock_service.get_ratings(stock_id)

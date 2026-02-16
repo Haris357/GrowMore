@@ -188,6 +188,65 @@ Check Railway/Render logs for startup errors. Common issues:
 
 ---
 
+## CI/CD Pipelines (GitHub Actions)
+
+Auto-deploy on push to main branch is configured via GitHub Actions.
+
+### Setup GitHub Secrets
+
+Go to your GitHub repo → Settings → Secrets and variables → Actions → New repository secret
+
+#### Frontend Secrets:
+```
+FIREBASE_SERVICE_ACCOUNT     # Firebase service account JSON (from Firebase Console)
+NEXT_PUBLIC_API_URL          # https://growmore-yg90.onrender.com/api/v1
+NEXT_PUBLIC_WS_URL           # wss://growmore-yg90.onrender.com/api/v1/ws
+NEXT_PUBLIC_FIREBASE_API_KEY
+NEXT_PUBLIC_FIREBASE_AUTH_DOMAIN
+NEXT_PUBLIC_FIREBASE_PROJECT_ID
+NEXT_PUBLIC_FIREBASE_STORAGE_BUCKET
+NEXT_PUBLIC_FIREBASE_MESSAGING_SENDER_ID
+NEXT_PUBLIC_FIREBASE_APP_ID
+```
+
+#### Backend Secrets:
+```
+RENDER_DEPLOY_HOOK_URL       # Get from Render Dashboard → Settings → Deploy Hook
+```
+
+### Get Firebase Service Account
+
+1. Go to [Firebase Console](https://console.firebase.google.com)
+2. Select your project → Project Settings → Service Accounts
+3. Click "Generate new private key"
+4. Copy the entire JSON content
+5. Add as `FIREBASE_SERVICE_ACCOUNT` secret in GitHub
+
+### Get Render Deploy Hook
+
+1. Go to [Render Dashboard](https://dashboard.render.com)
+2. Select your GrowMore service
+3. Go to Settings → Deploy Hook
+4. Copy the URL
+5. Add as `RENDER_DEPLOY_HOOK_URL` secret in GitHub
+
+### Workflow Triggers
+
+| Workflow | Trigger | What it does |
+|----------|---------|--------------|
+| `ci.yml` | Push/PR to main | Lint & build check |
+| `deploy-frontend.yml` | Push to main (frontend changes) | Deploy to Firebase |
+| `deploy-backend.yml` | Push to main (backend changes) | Trigger Render deploy |
+
+### Manual Deployment
+
+You can also trigger deployments manually:
+1. Go to GitHub → Actions
+2. Select the workflow
+3. Click "Run workflow"
+
+---
+
 ## Useful Commands
 
 ```bash

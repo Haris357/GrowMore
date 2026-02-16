@@ -1,11 +1,10 @@
-import asyncio
 import logging
+import time
 from datetime import datetime
 from typing import Optional
 
 from apscheduler.schedulers.asyncio import AsyncIOScheduler
 from apscheduler.triggers.cron import CronTrigger
-from apscheduler.triggers.interval import IntervalTrigger
 
 from app.config.settings import settings
 from app.db.supabase import get_supabase_service_client
@@ -22,14 +21,14 @@ from app.scrapers.news.propakistani import ProPakistaniScraper
 # from app.scrapers.reddit.pakistan_finance import PakistanFinanceRedditScraper
 from app.scrapers.hackernews.hn_scraper import HackerNewsScraper
 from app.scrapers.rss.feed_aggregator import RSSFeedAggregator, PakistanFinanceRSSAggregator
-from app.scrapers.stocks.psx_scraper import PSXScraper
-from app.scrapers.stocks.tickeranalysts_scraper import TickerAnalystsScraper
+from app.scrapers.stocks.unified_psx_scraper import UnifiedPSXScraper
 from app.scrapers.commodities.gold_scraper import GoldScraper
 from app.scrapers.commodities.silver_scraper import SilverScraper
 from app.ai.sentiment_analyzer import SentimentAnalyzer
 from app.ai.news_summarizer import NewsSummarizer
 from app.ai.impact_predictor import ImpactPredictor
 from app.ai.embeddings import EmbeddingService
+from app.logging.service import logging_service
 
 logger = logging.getLogger(__name__)
 
@@ -55,8 +54,7 @@ class ScraperScheduler:
         self.hn_scraper = HackerNewsScraper()
         self.rss_scraper = RSSFeedAggregator()
         self.pakistan_rss_scraper = PakistanFinanceRSSAggregator()
-        self.stock_scraper = PSXScraper()
-        self.fundamentals_scraper = TickerAnalystsScraper()
+        self.psx_scraper = UnifiedPSXScraper()
         self.gold_scraper = GoldScraper()
         self.silver_scraper = SilverScraper()
         self.sentiment_analyzer = SentimentAnalyzer()
@@ -89,7 +87,16 @@ class ScraperScheduler:
             replace_existing=True,
         )
 
-        # Commodities - Once daily at 6 PM PKT = 1 PM UTC (after gold market updates)
+        # Full stock scrape - weekly on Saturday at 2 AM PKT = 9 PM Friday UTC
+        self.scheduler.add_job(
+            self.scrape_stocks_full,
+            CronTrigger(day_of_week="fri", hour=21, minute=0, timezone="UTC"),
+            id="scrape_stocks_full",
+            name="Full Stock Scrape (weekly - prices, fundamentals, financials)",
+            replace_existing=True,
+        )
+
+        # Commodities - Once daily at 6 PM PKT = 1 PM UTC
         self.scheduler.add_job(
             self.scrape_commodities,
             CronTrigger(hour=13, minute=0, timezone="UTC"),
@@ -111,7 +118,8 @@ class ScraperScheduler:
         self._is_running = True
         logger.info("Scraper scheduler started with daily schedules")
         logger.info("  - News: 9 AM, 1 PM, 6 PM PKT")
-        logger.info("  - Stocks: 3:45 PM PKT (after market close)")
+        logger.info("  - Stocks (daily prices): 3:45 PM PKT (after market close)")
+        logger.info("  - Stocks (full scrape): Saturday 2 AM PKT (weekly)")
         logger.info("  - Commodities: 6 PM PKT")
         logger.info("  - AI Processing: 10 AM, 7 PM PKT")
 
@@ -123,9 +131,11 @@ class ScraperScheduler:
 
     async def scrape_news(self):
         logger.info("Starting news scrape")
+        start = time.time()
+        scraper_log = await logging_service.log_scraper_start("news")
+        log_id = scraper_log.get("id")
         all_articles = []
 
-        # Scrape traditional news sources
         for scraper in self.news_scrapers:
             try:
                 articles = await scraper.scrape()
@@ -134,15 +144,6 @@ class ScraperScheduler:
             except Exception as e:
                 logger.error(f"Error scraping {scraper.source_name}: {e}")
 
-        # Reddit scraper commented out - pending API approval
-        # try:
-        #     reddit_posts = await self.reddit_scraper.scrape()
-        #     all_articles.extend(reddit_posts)
-        #     logger.info(f"Scraped {len(reddit_posts)} posts from Reddit")
-        # except Exception as e:
-        #     logger.error(f"Error scraping Reddit: {e}")
-
-        # Scrape Hacker News (no API key needed)
         try:
             hn_posts = await self.hn_scraper.scrape()
             all_articles.extend(hn_posts)
@@ -150,7 +151,6 @@ class ScraperScheduler:
         except Exception as e:
             logger.error(f"Error scraping Hacker News: {e}")
 
-        # Scrape RSS feeds (no API key needed)
         try:
             rss_articles = await self.rss_scraper.scrape()
             all_articles.extend(rss_articles)
@@ -158,7 +158,6 @@ class ScraperScheduler:
         except Exception as e:
             logger.error(f"Error scraping RSS feeds: {e}")
 
-        # Scrape Pakistan-specific RSS feeds
         try:
             pk_rss_articles = await self.pakistan_rss_scraper.scrape()
             all_articles.extend(pk_rss_articles)
@@ -166,10 +165,20 @@ class ScraperScheduler:
         except Exception as e:
             logger.error(f"Error scraping Pakistan RSS feeds: {e}")
 
-        await self._save_news_articles(all_articles)
-        logger.info(f"News scrape completed. Total articles: {len(all_articles)}")
+        saved = await self._save_news_articles(all_articles)
+        duration = int((time.time() - start) * 1000)
+        logger.info(f"News scrape completed. Total: {len(all_articles)}, Saved: {saved}")
 
-    async def _save_news_articles(self, articles: list):
+        if log_id:
+            await logging_service.log_scraper_complete(
+                log_id,
+                records_processed=len(all_articles),
+                records_created=saved,
+                duration_ms=duration,
+            )
+
+    async def _save_news_articles(self, articles: list) -> int:
+        saved = 0
         for article in articles:
             try:
                 source_result = self.db.table("news_sources").select("id").eq(
@@ -200,145 +209,77 @@ class ScraperScheduler:
                     "scraped_at": datetime.utcnow().isoformat(),
                     "is_processed": False,
                 }).execute()
+                saved += 1
 
             except Exception as e:
                 logger.error(f"Error saving article: {e}")
+        return saved
 
     async def scrape_stocks(self):
-        logger.info("Starting stock scrape")
+        """Daily stock scrape — prices only from PSX market-watch."""
+        logger.info("Starting daily stock price scrape")
+        start = time.time()
+        scraper_log = await logging_service.log_scraper_start("stocks")
+        log_id = scraper_log.get("id")
         try:
-            # First, get basic price data from PSX
-            stocks = await self.stock_scraper.scrape()
-            await self._update_stock_prices(stocks)
-            logger.info(f"Stock scrape completed. Updated {len(stocks)} stocks")
-
-            # Then, try to get fundamental data from Ticker Analysts
-            try:
-                fundamentals = await self.fundamentals_scraper.scrape()
-                if fundamentals:
-                    await self._update_stock_fundamentals(fundamentals)
-                    logger.info(f"Fundamentals scrape completed. Updated {len(fundamentals)} stocks")
-            except Exception as e:
-                logger.warning(f"Fundamentals scrape failed (non-critical): {e}")
-
+            result = await self.psx_scraper.scrape_market_prices()
+            duration = int((time.time() - start) * 1000)
+            logger.info(
+                f"Daily stock scrape completed: {result.stocks_updated} prices updated, "
+                f"{result.history_inserted} history rows, {result.errors_count} errors"
+            )
+            if log_id:
+                await logging_service.log_scraper_complete(
+                    log_id,
+                    records_processed=result.stocks_updated + result.errors_count,
+                    records_updated=result.stocks_updated,
+                    records_created=result.history_inserted,
+                    records_failed=result.errors_count,
+                    duration_ms=duration,
+                )
         except Exception as e:
-            logger.error(f"Error scraping stocks: {e}")
+            duration = int((time.time() - start) * 1000)
+            logger.error(f"Error in daily stock scrape: {e}")
+            if log_id:
+                await logging_service.log_scraper_failure(log_id, str(e), duration)
 
-    async def _update_stock_prices(self, stocks: list):
-        updated_count = 0
-        for stock_data in stocks:
-            try:
-                company_result = self.db.table("companies").select("id").eq(
-                    "symbol", stock_data["symbol"]
-                ).execute()
-
-                if not company_result.data:
-                    # Company doesn't exist - skip (use seed_all_psx_stocks.py to add new companies)
-                    continue
-
-                company_id = company_result.data[0]["id"]
-
-                stock_result = self.db.table("stocks").select("id").eq(
-                    "company_id", company_id
-                ).execute()
-
-                update_data = {
-                    "current_price": float(stock_data["current_price"]) if stock_data.get("current_price") else None,
-                    "change_amount": float(stock_data["change_amount"]) if stock_data.get("change_amount") else None,
-                    "change_percentage": float(stock_data["change_percentage"]) if stock_data.get("change_percentage") else None,
-                    "volume": stock_data.get("volume"),
-                    "last_updated": datetime.utcnow().isoformat(),
-                }
-
-                # Also update high/low/open if available
-                if stock_data.get("open_price"):
-                    update_data["open_price"] = float(stock_data["open_price"])
-                if stock_data.get("high_price"):
-                    update_data["high_price"] = float(stock_data["high_price"])
-                if stock_data.get("low_price"):
-                    update_data["low_price"] = float(stock_data["low_price"])
-                if stock_data.get("previous_close"):
-                    update_data["previous_close"] = float(stock_data["previous_close"])
-
-                if stock_result.data:
-                    self.db.table("stocks").update(update_data).eq(
-                        "id", stock_result.data[0]["id"]
-                    ).execute()
-                    updated_count += 1
-
-            except Exception as e:
-                logger.error(f"Error updating stock {stock_data.get('symbol')}: {e}")
-
-        logger.info(f"Updated {updated_count} stock prices")
-
-    async def _update_stock_fundamentals(self, stocks: list):
-        """Update stocks with fundamental data from Ticker Analysts."""
-        updated_count = 0
-        for stock_data in stocks:
-            try:
-                symbol = stock_data.get("symbol")
-                if not symbol:
-                    continue
-
-                company_result = self.db.table("companies").select("id, name").eq(
-                    "symbol", symbol
-                ).execute()
-
-                if not company_result.data:
-                    continue
-
-                company_id = company_result.data[0]["id"]
-                company_name = company_result.data[0].get("name")
-
-                # Update company name if we got a better one
-                if stock_data.get("name") and stock_data["name"] != symbol:
-                    if not company_name or company_name == symbol:
-                        self.db.table("companies").update({
-                            "name": stock_data["name"]
-                        }).eq("id", company_id).execute()
-
-                stock_result = self.db.table("stocks").select("id").eq(
-                    "company_id", company_id
-                ).execute()
-
-                if not stock_result.data:
-                    continue
-
-                # Build update data with all available fundamental fields
-                update_data = {"last_updated": datetime.utcnow().isoformat()}
-
-                # Valuation metrics
-                fundamental_fields = [
-                    "market_cap", "pe_ratio", "pb_ratio", "ps_ratio", "peg_ratio", "ev_ebitda",
-                    "eps", "book_value", "dps", "dividend_yield",
-                    "roe", "roa", "roce", "gross_margin", "operating_margin", "net_margin", "profit_margin",
-                    "debt_to_equity", "debt_to_assets", "current_ratio", "quick_ratio", "interest_coverage",
-                    "revenue_growth", "earnings_growth", "profit_growth", "asset_growth",
-                    "free_cash_flow", "operating_cash_flow", "fcf_yield",
-                    "beta", "shares_outstanding", "float_shares", "payout_ratio",
-                    "week_52_high", "week_52_low", "avg_volume"
-                ]
-
-                for field in fundamental_fields:
-                    value = stock_data.get(field)
-                    if value is not None:
-                        try:
-                            update_data[field] = float(value) if not isinstance(value, int) else value
-                        except (ValueError, TypeError):
-                            pass
-
-                self.db.table("stocks").update(update_data).eq(
-                    "id", stock_result.data[0]["id"]
-                ).execute()
-                updated_count += 1
-
-            except Exception as e:
-                logger.error(f"Error updating fundamentals for {stock_data.get('symbol')}: {e}")
-
-        logger.info(f"Updated {updated_count} stocks with fundamental data")
+    async def scrape_stocks_full(self):
+        """Weekly full scrape — prices + fundamentals + financials + logos."""
+        logger.info("Starting full stock scrape (weekly)")
+        start = time.time()
+        scraper_log = await logging_service.log_scraper_start("stocks_full")
+        log_id = scraper_log.get("id")
+        try:
+            result = await self.psx_scraper.scrape_full()
+            duration = int((time.time() - start) * 1000)
+            logger.info(
+                f"Full stock scrape completed: {result.stocks_updated} prices, "
+                f"{result.companies_updated} companies, "
+                f"{result.financials_saved} financial records, "
+                f"{result.history_inserted} history rows, "
+                f"{result.errors_count} errors"
+            )
+            if log_id:
+                total = result.stocks_updated + result.companies_updated + result.financials_saved
+                await logging_service.log_scraper_complete(
+                    log_id,
+                    records_processed=total + result.errors_count,
+                    records_updated=result.stocks_updated + result.companies_updated,
+                    records_created=result.financials_saved + result.history_inserted,
+                    records_failed=result.errors_count,
+                    duration_ms=duration,
+                )
+        except Exception as e:
+            duration = int((time.time() - start) * 1000)
+            logger.error(f"Error in full stock scrape: {e}")
+            if log_id:
+                await logging_service.log_scraper_failure(log_id, str(e), duration)
 
     async def scrape_commodities(self):
         logger.info("Starting commodity scrape")
+        start = time.time()
+        scraper_log = await logging_service.log_scraper_start("commodities")
+        log_id = scraper_log.get("id")
         try:
             gold_rates = await self.gold_scraper.scrape()
             silver_rates = await self.silver_scraper.scrape()
@@ -346,9 +287,20 @@ class ScraperScheduler:
             all_rates = gold_rates + silver_rates
             await self._update_commodity_prices(all_rates)
 
+            duration = int((time.time() - start) * 1000)
             logger.info(f"Commodity scrape completed. Updated {len(all_rates)} commodities")
+            if log_id:
+                await logging_service.log_scraper_complete(
+                    log_id,
+                    records_processed=len(all_rates),
+                    records_updated=len(all_rates),
+                    duration_ms=duration,
+                )
         except Exception as e:
+            duration = int((time.time() - start) * 1000)
             logger.error(f"Error scraping commodities: {e}")
+            if log_id:
+                await logging_service.log_scraper_failure(log_id, str(e), duration)
 
     async def _update_commodity_prices(self, rates: list):
         for rate in rates:
@@ -386,6 +338,10 @@ class ScraperScheduler:
 
     async def process_news(self):
         logger.info("Starting news processing")
+        start = time.time()
+        scraper_log = await logging_service.log_scraper_start("process_news")
+        log_id = scraper_log.get("id")
+        processed = 0
         try:
             result = self.db.table("news_articles").select("*").eq(
                 "is_processed", False
@@ -425,34 +381,43 @@ class ScraperScheduler:
                         "embedding": embedding,
                     }).execute()
 
+                    processed += 1
                 except Exception as e:
                     logger.error(f"Error processing article {article['id']}: {e}")
 
-            logger.info(f"News processing completed. Processed {len(articles)} articles")
+            duration = int((time.time() - start) * 1000)
+            logger.info(f"News processing completed. Processed {processed}/{len(articles)} articles")
+            if log_id:
+                await logging_service.log_scraper_complete(
+                    log_id,
+                    records_processed=len(articles),
+                    records_updated=processed,
+                    records_failed=len(articles) - processed,
+                    duration_ms=duration,
+                )
         except Exception as e:
+            duration = int((time.time() - start) * 1000)
             logger.error(f"Error in news processing: {e}")
+            if log_id:
+                await logging_service.log_scraper_failure(log_id, str(e), duration)
 
     async def run_manual_scrape(self, scraper_type: str):
         if scraper_type == "news":
             await self.scrape_news()
         elif scraper_type == "stocks":
             await self.scrape_stocks()
-        elif scraper_type == "fundamentals":
-            # Scrape only fundamentals (useful for one-time data enrichment)
-            try:
-                fundamentals = await self.fundamentals_scraper.scrape()
-                if fundamentals:
-                    await self._update_stock_fundamentals(fundamentals)
-                    logger.info(f"Manual fundamentals scrape completed. Updated {len(fundamentals)} stocks")
-            except Exception as e:
-                logger.error(f"Error in manual fundamentals scrape: {e}")
+        elif scraper_type == "stocks_full":
+            await self.scrape_stocks_full()
+        elif scraper_type in ("fundamentals", "financial_statements"):
+            # Backwards-compatible aliases — both now run the full scrape
+            await self.scrape_stocks_full()
         elif scraper_type == "commodities":
             await self.scrape_commodities()
         elif scraper_type == "process":
             await self.process_news()
         elif scraper_type == "all":
             await self.scrape_news()
-            await self.scrape_stocks()
+            await self.scrape_stocks_full()
             await self.scrape_commodities()
             await self.process_news()
 

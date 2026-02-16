@@ -50,15 +50,15 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         />
       )}
 
-      {/* Sidebar - Overlay style */}
+      {/* Sidebar - OpenAI style */}
       <aside
         className={cn(
-          'fixed inset-y-0 left-0 z-50 flex flex-col w-64 bg-card border-r shadow-xl transition-transform duration-300 ease-in-out',
+          'fixed inset-y-0 left-0 z-50 flex flex-col w-64 bg-sidebar text-sidebar-foreground border-r border-sidebar-border shadow-xl transition-transform duration-300 ease-in-out',
           isOpen ? 'translate-x-0' : '-translate-x-full'
         )}
       >
         {/* Header */}
-        <div className="flex items-center justify-between h-14 px-4 border-b">
+        <div className="flex items-center justify-between h-14 px-4 border-b border-sidebar-border">
           <Link href="/dashboard" className="flex items-center gap-2">
             <Leaf className="h-7 w-7 text-primary" />
             <span className="text-lg font-bold">GrowMore</span>
@@ -67,7 +67,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
             variant="ghost"
             size="icon"
             onClick={onClose}
-            className="h-8 w-8"
+            className="h-8 w-8 hover:bg-accent"
           >
             <X className="h-4 w-4" />
           </Button>
@@ -85,8 +85,8 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
                 className={cn(
                   'flex items-center gap-3 px-3 py-2.5 text-sm font-medium rounded-lg transition-smooth',
                   isActive
-                    ? 'bg-primary text-primary-foreground'
-                    : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                    ? 'bg-accent text-foreground'
+                    : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                 )}
               >
                 <item.icon className="h-5 w-5 shrink-0" />
@@ -97,7 +97,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         </nav>
 
         {/* Footer */}
-        <div className="p-4 border-t">
+        <div className="p-4 border-t border-sidebar-border">
           <p className="text-xs text-muted-foreground text-center">
             GrowMore v1.0
           </p>
@@ -113,16 +113,16 @@ export function CollapsedSidebar({ onOpen }: { onOpen: () => void }) {
 
   return (
     <TooltipProvider delayDuration={100}>
-      <aside className="fixed inset-y-0 left-0 z-20 flex flex-col w-16 bg-background border-r">
+      <aside className="fixed inset-y-0 left-0 z-20 flex flex-col w-16 bg-sidebar border-r border-sidebar-border">
         {/* Menu toggle */}
-        <div className="flex items-center justify-center h-14 border-b">
+        <div className="flex items-center justify-center h-14 border-b border-sidebar-border">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
                 onClick={onOpen}
-                className="h-9 w-9"
+                className="h-9 w-9 hover:bg-accent"
               >
                 <Menu className="h-5 w-5" />
               </Button>
@@ -145,8 +145,8 @@ export function CollapsedSidebar({ onOpen }: { onOpen: () => void }) {
                     className={cn(
                       'flex items-center justify-center h-10 w-10 mx-auto rounded-lg transition-smooth',
                       isActive
-                        ? 'bg-primary text-primary-foreground'
-                        : 'text-muted-foreground hover:bg-muted hover:text-foreground'
+                        ? 'bg-accent text-foreground'
+                        : 'text-muted-foreground hover:bg-accent hover:text-foreground'
                     )}
                   >
                     <item.icon className="h-5 w-5" />
@@ -161,7 +161,7 @@ export function CollapsedSidebar({ onOpen }: { onOpen: () => void }) {
         </nav>
 
         {/* Logo at bottom */}
-        <div className="py-4 flex justify-center border-t">
+        <div className="py-4 flex justify-center border-t border-sidebar-border">
           <Tooltip>
             <TooltipTrigger asChild>
               <Link href="/dashboard">

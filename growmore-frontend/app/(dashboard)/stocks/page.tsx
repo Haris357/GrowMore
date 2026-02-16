@@ -40,7 +40,7 @@ import {
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { StockQuote } from '@/types/market';
-import { FilterModal, ScreenerFilters, defaultFilters } from '@/components/stocks/filter-modal';
+import { FilterModal, ScreenerFilters, defaultFilters, getActiveFiltersList, clearSingleFilter } from '@/components/stocks/filter-modal';
 import { ColumnsModal, ColumnConfig, availableColumns } from '@/components/stocks/columns-modal';
 import { StrategiesModal } from '@/components/stocks/strategies-modal';
 import { StockDetailDrawer } from '@/components/stocks/stock-detail-drawer';
@@ -62,7 +62,7 @@ export default function StocksPage() {
   const [error, setError] = useState<string | null>(null);
   const [pagination, setPagination] = useState<PaginationInfo | null>(null);
   const [currentPage, setCurrentPage] = useState(1);
-  const [pageSize, setPageSize] = useState(50);
+  const [pageSize, setPageSize] = useState(10);
 
   // Modal states
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
@@ -180,16 +180,11 @@ export default function StocksPage() {
     setFilters(defaultFilters);
   };
 
-  const getActiveFilterCount = () => {
-    let count = 0;
-    if (filters.sector !== 'All Sectors') count++;
-    if (filters.price_min > 0 || filters.price_max < 10000) count++;
-    if (filters.change_pct_min > -100 || filters.change_pct_max < 100) count++;
-    if (filters.volume_min > 0) count++;
-    if (filters.dividend_yield_min > 0) count++;
-    if (filters.roe_min > 0) count++;
-    return count;
+  const handleRemoveFilter = (key: string) => {
+    setFilters(clearSingleFilter(filters, key));
   };
+
+  const activeFiltersList = getActiveFiltersList(filters);
 
   const exportCSV = () => {
     const headers = visibleColumns.map((col) => col.label).join(',');
@@ -253,7 +248,7 @@ export default function StocksPage() {
     }
   };
 
-  const activeFilterCount = getActiveFilterCount();
+  const activeFilterCount = activeFiltersList.length;
 
   if (error && !stocks.length) {
     return (
@@ -327,37 +322,39 @@ export default function StocksPage() {
 
         {/* Active Filters */}
         {activeFilterCount > 0 && (
-          <div className="flex items-center gap-2 flex-wrap text-sm">
-            <span className="text-muted-foreground">Filters:</span>
-            {filters.sector !== 'All Sectors' && (
-              <Badge variant="secondary">{filters.sector}</Badge>
-            )}
-            {(filters.price_min > 0 || filters.price_max < 10000) && (
-              <Badge variant="secondary">
-                Price: Rs.{filters.price_min}-{filters.price_max}
+          <div className="flex items-center gap-1.5 flex-wrap text-sm">
+            <span className="text-xs text-muted-foreground mr-1">Active:</span>
+            {activeFiltersList.map((f) => (
+              <Badge
+                key={f.key}
+                variant="secondary"
+                className="text-xs gap-1 pr-1 cursor-pointer hover:bg-destructive/10"
+              >
+                <span className="font-medium">{f.label}:</span> {f.value}
+                <button
+                  onClick={(e) => { e.stopPropagation(); handleRemoveFilter(f.key); }}
+                  className="ml-0.5 rounded-full hover:bg-muted p-0.5"
+                >
+                  <X className="h-2.5 w-2.5" />
+                </button>
               </Badge>
-            )}
-            {filters.dividend_yield_min > 0 && (
-              <Badge variant="secondary">Yield &gt; {filters.dividend_yield_min}%</Badge>
-            )}
-            <Button variant="ghost" size="sm" onClick={handleClearFilters} className="h-6 px-2 text-xs">
-              <X className="h-3 w-3 mr-1" />
-              Clear
+            ))}
+            <Button variant="ghost" size="sm" onClick={handleClearFilters} className="h-6 px-2 text-xs text-muted-foreground">
+              Clear all
             </Button>
           </div>
         )}
       </div>
 
       {/* Table Card */}
-      <Card>
+      <Card className="overflow-hidden">
         <CardContent className="p-0">
           {isLoading ? (
-            <TableSkeleton rows={15} columns={6} />
+            <TableSkeleton rows={10} columns={6} />
           ) : (
             <>
               {/* Table with horizontal scroll */}
-              <div className="overflow-x-auto">
-                <Table>
+                <Table className="min-w-[900px]">
                   <TableHeader>
                     <TableRow className="bg-muted/50">
                       {visibleColumns.map((col) => (
@@ -365,6 +362,7 @@ export default function StocksPage() {
                           key={col.key}
                           className={cn(
                             'whitespace-nowrap cursor-pointer hover:bg-muted/80 transition-colors',
+                            col.key === 'symbol' && 'sticky left-0 z-20 bg-muted/95 backdrop-blur-sm after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-border',
                             col.key !== 'symbol' && col.key !== 'name' && col.key !== 'sector' && 'text-right'
                           )}
                           onClick={() => handleSort(col.key)}
@@ -406,7 +404,7 @@ export default function StocksPage() {
                           {visibleColumns.map((col) => {
                             if (col.key === 'symbol') {
                               return (
-                                <TableCell key={col.key} className="font-medium">
+                                <TableCell key={col.key} className="font-medium sticky left-0 z-20 bg-background group-hover:bg-muted/50 after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-border">
                                   <div className="flex items-center gap-2 hover:text-primary">
                                     <Avatar className="h-7 w-7">
                                       {stock.logo_url && <AvatarImage src={stock.logo_url} alt={stock.symbol} />}
@@ -448,7 +446,6 @@ export default function StocksPage() {
                     )}
                   </TableBody>
                 </Table>
-              </div>
 
               {/* Pagination */}
               {pagination && (
@@ -460,6 +457,7 @@ export default function StocksPage() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
+                        <SelectItem value="10">10</SelectItem>
                         <SelectItem value="25">25</SelectItem>
                         <SelectItem value="50">50</SelectItem>
                         <SelectItem value="100">100</SelectItem>

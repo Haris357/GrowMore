@@ -87,3 +87,65 @@ export interface StockFinancials {
   cash_flow?: number;
   fiscal_year?: number;
 }
+
+export interface FinancialStatement {
+  id?: string;
+  company_id?: string;
+  period_type: 'annual' | 'quarterly';
+  fiscal_year: number;
+  quarter?: number;
+  // Income Statement
+  revenue?: number;
+  cost_of_revenue?: number;
+  gross_profit?: number;
+  operating_expenses?: number;
+  operating_income?: number;
+  ebitda?: number;
+  interest_expense?: number;
+  net_income?: number;
+  eps?: number;
+  // Balance Sheet
+  total_assets?: number;
+  current_assets?: number;
+  non_current_assets?: number;
+  total_liabilities?: number;
+  current_liabilities?: number;
+  non_current_liabilities?: number;
+  total_equity?: number;
+  // Cash Flow
+  operating_cash_flow?: number;
+  investing_cash_flow?: number;
+  financing_cash_flow?: number;
+  net_cash_change?: number;
+  free_cash_flow?: number;
+}
+
+export interface RatingMetric {
+  name: string;
+  category: string;
+  value?: string;
+  display_value: string;
+  status: 'good' | 'bad' | 'neutral';
+  description?: string;
+}
+
+export interface StockRatings {
+  stock_id: string;
+  symbol: string;
+  growth_metrics: RatingMetric[];
+  stability_metrics: RatingMetric[];
+  valuation_metrics: RatingMetric[];
+  efficiency_metrics: RatingMetric[];
+  cash_flow_metrics: RatingMetric[];
+}
+
+export interface StockHistoryPoint {
+  id: string;
+  stock_id: string;
+  date: string;
+  open_price?: number;
+  high_price?: number;
+  low_price?: number;
+  close_price?: number;
+  volume?: number;
+}

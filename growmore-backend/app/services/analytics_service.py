@@ -237,21 +237,30 @@ class AnalyticsService:
         """Get comprehensive portfolio analytics."""
         try:
             # Get holdings
-            query = self.db.table("holdings").select(
-                "*, stocks(symbol, name, sector, current_price, change_percentage)"
-            ).eq("user_id", user_id)
+            query = self.db.table("holdings").select("*").eq("user_id", user_id)
 
             if portfolio_id:
                 query = query.eq("portfolio_id", portfolio_id)
 
             result = query.execute()
+            raw_holdings = result.data or []
             holdings = []
 
-            for h in (result.data or []):
-                stock = h.get("stocks", {}) or {}
+            # Fetch stock data separately to avoid PostgREST FK dependency
+            if raw_holdings:
+                symbols = list({h["symbol"] for h in raw_holdings if h.get("symbol")})
+                stocks_result = self.db.table("stocks").select(
+                    "symbol, name, sector, current_price, change_percentage"
+                ).in_("symbol", symbols).execute()
+                stock_map = {s["symbol"]: s for s in (stocks_result.data or [])}
+            else:
+                stock_map = {}
+
+            for h in raw_holdings:
+                stock = stock_map.get(h.get("symbol", ""), {})
                 quantity = int(h.get("quantity", 0))
                 avg_price = float(h.get("average_price", 0))
-                current_price = float(stock.get("current_price", avg_price))
+                current_price = float(stock.get("current_price", avg_price) or avg_price)
 
                 total_invested = quantity * avg_price
                 current_value = quantity * current_price

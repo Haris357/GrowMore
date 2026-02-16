@@ -15,14 +15,16 @@ router = APIRouter()
 
 @router.post("/scrape/{scraper_type}")
 async def run_manual_scrape(
-    scraper_type: Literal["stocks", "fundamentals", "commodities", "news", "process", "all"],
+    scraper_type: Literal["stocks", "stocks_full", "fundamentals", "financial_statements", "commodities", "news", "process", "all"],
     background_tasks: BackgroundTasks,
 ):
     """
     Manually trigger a scrape job.
 
-    - stocks: Update all PSX stock prices + fundamentals
-    - fundamentals: Update only fundamental data (PE, market cap, etc.)
+    - stocks: Update all PSX stock prices (daily, fast)
+    - stocks_full: Full scrape — prices + fundamentals + financials + logos (weekly)
+    - fundamentals: Alias for stocks_full (backwards compatible)
+    - financial_statements: Alias for stocks_full (backwards compatible)
     - commodities: Update gold/silver prices
     - news: Scrape news from all sources
     - process: Process unprocessed news with AI

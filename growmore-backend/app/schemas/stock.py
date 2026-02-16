@@ -373,3 +373,79 @@ class SectorResponse(BaseModel):
 class SectorsListResponse(BaseModel):
     """List of all sectors."""
     sectors: List[SectorResponse]
+
+
+# =====================================================
+# FINANCIAL STATEMENTS SCHEMAS
+# =====================================================
+
+class FinancialStatementResponse(BaseModel):
+    """Single period financial statement."""
+    id: Optional[UUID] = None
+    company_id: Optional[UUID] = None
+    period_type: str  # 'annual' or 'quarterly'
+    fiscal_year: int
+    quarter: Optional[int] = None
+
+    # Income Statement
+    revenue: Optional[Decimal] = None
+    cost_of_revenue: Optional[Decimal] = None
+    gross_profit: Optional[Decimal] = None
+    operating_expenses: Optional[Decimal] = None
+    operating_income: Optional[Decimal] = None
+    ebitda: Optional[Decimal] = None
+    interest_expense: Optional[Decimal] = None
+    net_income: Optional[Decimal] = None
+    eps: Optional[Decimal] = None
+
+    # Balance Sheet
+    total_assets: Optional[Decimal] = None
+    current_assets: Optional[Decimal] = None
+    non_current_assets: Optional[Decimal] = None
+    total_liabilities: Optional[Decimal] = None
+    current_liabilities: Optional[Decimal] = None
+    non_current_liabilities: Optional[Decimal] = None
+    total_equity: Optional[Decimal] = None
+
+    # Cash Flow
+    operating_cash_flow: Optional[Decimal] = None
+    investing_cash_flow: Optional[Decimal] = None
+    financing_cash_flow: Optional[Decimal] = None
+    net_cash_change: Optional[Decimal] = None
+    free_cash_flow: Optional[Decimal] = None
+
+    class Config:
+        from_attributes = True
+
+
+class FinancialStatementsListResponse(BaseModel):
+    """List of financial statements for a stock."""
+    stock_id: UUID
+    symbol: str
+    statements: List[FinancialStatementResponse]
+    period_type: str
+
+
+# =====================================================
+# RATINGS SCHEMAS
+# =====================================================
+
+class RatingMetric(BaseModel):
+    """Single rating metric with Good/Bad status."""
+    name: str
+    category: str
+    value: Optional[str] = None
+    display_value: str
+    status: str  # 'good', 'bad', 'neutral'
+    description: Optional[str] = None
+
+
+class StockRatingsResponse(BaseModel):
+    """All computed ratings for a stock."""
+    stock_id: UUID
+    symbol: str
+    growth_metrics: List[RatingMetric]
+    stability_metrics: List[RatingMetric]
+    valuation_metrics: List[RatingMetric]
+    efficiency_metrics: List[RatingMetric]
+    cash_flow_metrics: List[RatingMetric]

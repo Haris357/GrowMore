@@ -9,6 +9,7 @@ from app.config.settings import settings
 from app.api.v1.router import api_router
 from app.core.exceptions import GrowMoreException
 from app.scrapers.scheduler import get_scheduler
+from app.logging.middleware import setup_request_logging
 
 
 logging.basicConfig(
@@ -54,8 +55,15 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-# Allow all origins for now (can restrict later)
-cors_origins = ["*"]
+# CORS: list all allowed origins (wildcard "*" doesn't work with credentials)
+cors_origins = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "http://127.0.0.1:3000",
+    "http://127.0.0.1:3001",
+    "https://grow-more-ai.web.app",
+    "https://grow-more-ai.firebaseapp.com",
+] + [o for o in settings.cors_origins if o != "*"]
 print(f"Using CORS origins: {cors_origins}")
 
 app.add_middleware(
@@ -65,6 +73,9 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Request logging middleware (must be added after CORS)
+setup_request_logging(app)
 
 
 @app.exception_handler(GrowMoreException)

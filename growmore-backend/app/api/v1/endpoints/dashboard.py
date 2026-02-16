@@ -151,18 +151,24 @@ async def get_quick_stats(
 
     # User holdings value
     holdings_result = db.table("holdings").select(
-        "quantity,average_price,stocks(current_price)"
+        "symbol,quantity,average_price"
     ).eq("user_id", current_user.firebase_uid).execute()
 
+    holdings_data = holdings_result.data or []
     portfolio_value = 0
     total_invested = 0
-    for h in (holdings_result.data or []):
-        qty = int(h.get("quantity", 0))
-        avg = float(h.get("average_price", 0))
-        stock = h.get("stocks", {}) or {}
-        current = float(stock.get("current_price", avg))
-        portfolio_value += qty * current
-        total_invested += qty * avg
+
+    if holdings_data:
+        symbols = list({h["symbol"] for h in holdings_data if h.get("symbol")})
+        prices_result = db.table("stocks").select("symbol,current_price").in_("symbol", symbols).execute()
+        price_map = {s["symbol"]: float(s.get("current_price", 0) or 0) for s in (prices_result.data or [])}
+
+        for h in holdings_data:
+            qty = int(h.get("quantity", 0))
+            avg = float(h.get("average_price", 0))
+            current = price_map.get(h.get("symbol", ""), avg)
+            portfolio_value += qty * current
+            total_invested += qty * avg
 
     # Unread notifications
     from app.services.notification_service import NotificationService

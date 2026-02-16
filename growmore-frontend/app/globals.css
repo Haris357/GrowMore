@@ -6,93 +6,103 @@
 
 @layer base {
   :root {
-    /* Light Theme - White & Green (Upwork-inspired) */
+    /* OpenAI Light Theme */
     --background: 0 0% 100%;
-    --foreground: 220 13% 18%;
+    --foreground: 0 0% 3.5%;
     --card: 0 0% 100%;
-    --card-foreground: 220 13% 18%;
+    --card-foreground: 0 0% 3.5%;
     --popover: 0 0% 100%;
-    --popover-foreground: 220 13% 18%;
+    --popover-foreground: 0 0% 3.5%;
 
-    /* Primary Green - Upwork-style */
-    --primary: 145 63% 42%;
+    /* Primary - OpenAI Teal Green #10a37f */
+    --primary: 160 83% 35%;
     --primary-foreground: 0 0% 100%;
 
-    /* Secondary - Lighter Green */
-    --secondary: 145 45% 94%;
-    --secondary-foreground: 145 63% 32%;
+    /* Secondary */
+    --secondary: 0 0% 96.5%;
+    --secondary-foreground: 0 0% 9%;
 
-    --muted: 220 14% 96%;
-    --muted-foreground: 220 9% 46%;
-    --accent: 145 45% 94%;
-    --accent-foreground: 145 63% 32%;
+    --muted: 0 0% 96.5%;
+    --muted-foreground: 0 0% 45%;
+    --accent: 0 0% 96.5%;
+    --accent-foreground: 0 0% 9%;
     --destructive: 0 84% 60%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 91%;
-    --input: 220 13% 91%;
-    --ring: 145 63% 42%;
+    --border: 0 0% 90%;
+    --input: 0 0% 90%;
+    --ring: 160 83% 35%;
+
+    /* Sidebar - OpenAI light sidebar */
+    --sidebar: 0 0% 97%;
+    --sidebar-foreground: 0 0% 3.5%;
+    --sidebar-border: 0 0% 90%;
 
     /* Status Colors */
-    --success: 145 63% 42%;
+    --success: 160 83% 35%;
     --warning: 38 92% 50%;
-    --info: 199 89% 48%;
-    --gain: 145 63% 42%;
+    --info: 217 91% 60%;
+    --gain: 160 84% 39%;
     --loss: 0 84% 60%;
     --gold: 43 96% 56%;
     --gold-dark: 36 90% 45%;
 
-    --radius: 0.5rem;
+    --radius: 0.75rem;
 
-    /* Chart Colors - Green-focused */
-    --chart-1: 145 63% 42%;
-    --chart-2: 145 63% 32%;
+    /* Chart Colors */
+    --chart-1: 160 83% 35%;
+    --chart-2: 217 91% 60%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
-    --chart-5: 199 89% 48%;
+    --chart-5: 340 75% 55%;
   }
 
   .dark {
-    /* Dark Theme - Black & Green */
-    --background: 220 13% 8%;
-    --foreground: 0 0% 95%;
-    --card: 220 13% 11%;
-    --card-foreground: 0 0% 95%;
-    --popover: 220 13% 11%;
-    --popover-foreground: 0 0% 95%;
+    /* OpenAI Dark Theme */
+    --background: 0 0% 13%;
+    --foreground: 0 0% 93%;
+    --card: 0 0% 15%;
+    --card-foreground: 0 0% 93%;
+    --popover: 0 0% 15%;
+    --popover-foreground: 0 0% 93%;
 
-    /* Primary Green - Brighter for dark mode */
-    --primary: 145 63% 49%;
+    /* Primary - OpenAI Teal (brighter for dark) */
+    --primary: 160 73% 46%;
     --primary-foreground: 0 0% 100%;
 
-    /* Secondary - Dark Green tint */
-    --secondary: 145 30% 18%;
-    --secondary-foreground: 145 63% 70%;
+    /* Secondary */
+    --secondary: 0 0% 18%;
+    --secondary-foreground: 0 0% 93%;
 
-    --muted: 220 13% 15%;
-    --muted-foreground: 220 9% 60%;
-    --accent: 145 30% 18%;
-    --accent-foreground: 145 63% 70%;
+    --muted: 0 0% 18%;
+    --muted-foreground: 0 0% 64%;
+    --accent: 0 0% 18%;
+    --accent-foreground: 0 0% 93%;
     --destructive: 0 63% 45%;
     --destructive-foreground: 0 0% 100%;
-    --border: 220 13% 18%;
-    --input: 220 13% 18%;
-    --ring: 145 63% 49%;
+    --border: 0 0% 22%;
+    --input: 0 0% 22%;
+    --ring: 160 73% 46%;
+
+    /* Sidebar - OpenAI dark sidebar */
+    --sidebar: 0 0% 9%;
+    --sidebar-foreground: 0 0% 93%;
+    --sidebar-border: 0 0% 18%;
 
     /* Status Colors */
-    --success: 145 63% 49%;
+    --success: 160 73% 46%;
     --warning: 38 92% 50%;
-    --info: 199 89% 48%;
-    --gain: 145 63% 49%;
+    --info: 217 91% 60%;
+    --gain: 160 73% 46%;
     --loss: 0 84% 60%;
     --gold: 43 96% 56%;
     --gold-dark: 36 90% 45%;
 
-    /* Chart Colors - Green-focused */
-    --chart-1: 145 63% 49%;
-    --chart-2: 145 63% 38%;
+    /* Chart Colors */
+    --chart-1: 160 73% 46%;
+    --chart-2: 217 91% 60%;
     --chart-3: 38 92% 50%;
     --chart-4: 280 65% 60%;
-    --chart-5: 199 89% 48%;
+    --chart-5: 340 75% 55%;
   }
 }
 
@@ -155,6 +165,18 @@
 
   .bg-loss {
     @apply bg-[hsl(var(--loss))];
+  }
+
+  .bg-sidebar {
+    background-color: hsl(var(--sidebar));
+  }
+
+  .text-sidebar-foreground {
+    color: hsl(var(--sidebar-foreground));
+  }
+
+  .border-sidebar-border {
+    border-color: hsl(var(--sidebar-border));
   }
 
   .transition-smooth {

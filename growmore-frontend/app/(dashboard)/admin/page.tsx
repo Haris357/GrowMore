@@ -668,8 +668,8 @@ export default function AdminPage() {
         <TabsContent value="scrapers">
           <div className="grid gap-6 md:grid-cols-2 lg:grid-cols-3">
             {[
-              { type: 'stocks', name: 'Stock Prices', desc: 'Update PSX stock prices and fundamentals', icon: TrendingUp },
-              { type: 'fundamentals', name: 'Fundamentals', desc: 'Update PE, Market Cap, EPS, etc.', icon: Database },
+              { type: 'stocks', name: 'Stock Prices', desc: 'Update PSX stock prices (daily, fast)', icon: TrendingUp },
+              { type: 'stocks_full', name: 'Stocks Full', desc: 'Prices + fundamentals + financials + logos (weekly)', icon: Database },
               { type: 'commodities', name: 'Commodities', desc: 'Update gold/silver prices', icon: Zap },
               { type: 'news', name: 'News', desc: 'Scrape news from all sources', icon: Newspaper },
               { type: 'process', name: 'Process News', desc: 'Process unprocessed news with AI', icon: Bot },

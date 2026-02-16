@@ -8,8 +8,9 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { TrendingUp, ArrowLeft, Mail, CheckCircle2 } from 'lucide-react';
+import { Leaf, ArrowLeft, Mail, CheckCircle2 } from 'lucide-react';
 import { resetPassword } from '@/lib/firebase';
+import { ThemeToggle } from '@/components/common/theme-toggle';
 
 export default function ForgotPasswordPage() {
   const router = useRouter();
@@ -42,11 +43,12 @@ export default function ForgotPasswordPage() {
 
   if (isSuccess) {
     return (
-      <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted">
+      <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+        <ThemeToggle />
         <Card className="w-full max-w-md animate-fade-in">
           <CardHeader className="text-center">
-            <div className="mx-auto w-16 h-16 rounded-full bg-green-100 dark:bg-green-900 flex items-center justify-center mb-4">
-              <CheckCircle2 className="h-8 w-8 text-green-600 dark:text-green-400" />
+            <div className="mx-auto w-16 h-16 rounded-full bg-primary/10 flex items-center justify-center mb-4">
+              <CheckCircle2 className="h-8 w-8 text-primary" />
             </div>
             <CardTitle className="text-2xl">Check your email</CardTitle>
             <CardDescription>
@@ -76,11 +78,12 @@ export default function ForgotPasswordPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center p-4 bg-gradient-to-br from-background to-muted">
+    <div className="min-h-screen flex items-center justify-center p-4 bg-background">
+      <ThemeToggle />
       <Card className="w-full max-w-md animate-fade-in">
         <CardHeader className="text-center">
           <Link href="/" className="flex items-center justify-center gap-2 mb-4">
-            <TrendingUp className="h-8 w-8 text-primary" />
+            <Leaf className="h-8 w-8 text-primary" />
             <span className="text-2xl font-bold">GrowMore</span>
           </Link>
           <CardTitle className="text-2xl">Reset your password</CardTitle>
