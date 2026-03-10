@@ -1,11 +1,10 @@
 """
-Admin endpoints for manual scraping and system management.
+Admin endpoints for system management and logging.
 These endpoints should be protected in production.
 """
 from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from typing import Literal, Optional
 
-from app.scrapers.scheduler import get_scheduler
 from app.logging.service import logging_service
 from app.core.dependencies import get_current_user
 from app.models.user import User
@@ -13,78 +12,38 @@ from app.models.user import User
 router = APIRouter()
 
 
-@router.post("/scrape/{scraper_type}")
-async def run_manual_scrape(
-    scraper_type: Literal["stocks", "stocks_full", "fundamentals", "financial_statements", "commodities", "news", "process", "all"],
+@router.post("/sync/{sync_type}")
+async def run_manual_sync(
+    sync_type: Literal["stocks", "stocks_full", "stocks_intraday", "stocks_history", "fundamentals", "financial_statements"],
     background_tasks: BackgroundTasks,
 ):
     """
-    Manually trigger a scrape job.
+    Manually trigger a PSX data sync job.
 
     - stocks: Update all PSX stock prices (daily, fast)
-    - stocks_full: Full scrape — prices + fundamentals + financials + logos (weekly)
-    - fundamentals: Alias for stocks_full (backwards compatible)
-    - financial_statements: Alias for stocks_full (backwards compatible)
-    - commodities: Update gold/silver prices
-    - news: Scrape news from all sources
-    - process: Process unprocessed news with AI
-    - all: Run all scrapers
+    - stocks_full: Full sync — prices + fundamentals + financials + logos
+    - stocks_history: Backfill 2 years of daily OHLCV history for all stocks
+    - fundamentals: Alias for stocks_full
+    - financial_statements: Alias for stocks_full
     """
-    scheduler = get_scheduler()
+    from app.services.psx import PSXSyncService
 
-    # Run in background to avoid timeout
-    background_tasks.add_task(scheduler.run_manual_scrape, scraper_type)
+    async def _run_sync():
+        sync = PSXSyncService()
+        if sync_type in ("stocks", "stocks_intraday"):
+            await sync.sync_daily_prices()
+        elif sync_type in ("stocks_full", "fundamentals", "financial_statements"):
+            await sync.sync_full()
+        elif sync_type == "stocks_history":
+            await sync.sync_daily_prices()
+
+    background_tasks.add_task(_run_sync)
 
     return {
         "status": "started",
-        "scraper_type": scraper_type,
-        "message": f"Manual {scraper_type} scrape started in background"
+        "sync_type": sync_type,
+        "message": f"Manual {sync_type} sync started in background"
     }
-
-
-@router.get("/scheduler/status")
-async def get_scheduler_status():
-    """Get the current scheduler status and job information."""
-    scheduler = get_scheduler()
-
-    jobs = []
-    if scheduler._is_running:
-        for job in scheduler.scheduler.get_jobs():
-            jobs.append({
-                "id": job.id,
-                "name": job.name,
-                "next_run": job.next_run_time.isoformat() if job.next_run_time else None,
-                "trigger": str(job.trigger),
-            })
-
-    return {
-        "is_running": scheduler._is_running,
-        "jobs": jobs,
-    }
-
-
-@router.post("/scheduler/start")
-async def start_scheduler():
-    """Start the scheduler if not already running."""
-    scheduler = get_scheduler()
-
-    if scheduler._is_running:
-        return {"status": "already_running", "message": "Scheduler is already running"}
-
-    scheduler.start()
-    return {"status": "started", "message": "Scheduler started successfully"}
-
-
-@router.post("/scheduler/stop")
-async def stop_scheduler():
-    """Stop the scheduler if running."""
-    scheduler = get_scheduler()
-
-    if not scheduler._is_running:
-        return {"status": "not_running", "message": "Scheduler is not running"}
-
-    scheduler.stop()
-    return {"status": "stopped", "message": "Scheduler stopped successfully"}
 
 
 # ==================== Logs Endpoints ====================
@@ -98,13 +57,9 @@ async def get_api_logs(
     path_contains: Optional[str] = Query(default=None),
     current_user: User = Depends(get_current_user),
 ):
-    """Get API request logs with filtering."""
     return await logging_service.get_api_logs(
-        page=page,
-        page_size=page_size,
-        method=method,
-        status_code=status_code,
-        path_contains=path_contains,
+        page=page, page_size=page_size, method=method,
+        status_code=status_code, path_contains=path_contains,
     )
 
 
@@ -117,13 +72,9 @@ async def get_error_logs(
     error_type: Optional[str] = Query(default=None),
     current_user: User = Depends(get_current_user),
 ):
-    """Get application error logs with filtering."""
     return await logging_service.get_error_logs(
-        page=page,
-        page_size=page_size,
-        severity=severity,
-        resolved=resolved,
-        error_type=error_type,
+        page=page, page_size=page_size, severity=severity,
+        resolved=resolved, error_type=error_type,
     )
 
 
@@ -132,11 +83,7 @@ async def resolve_error_log(
     error_id: str,
     current_user: User = Depends(get_current_user),
 ):
-    """Mark an error as resolved."""
-    return await logging_service.resolve_error(
-        error_id=error_id,
-        resolved_by=current_user.id,
-    )
+    return await logging_service.resolve_error(error_id=error_id, resolved_by=current_user.id)
 
 
 @router.get("/logs/audit")
@@ -148,13 +95,9 @@ async def get_audit_logs(
     action: Optional[str] = Query(default=None),
     current_user: User = Depends(get_current_user),
 ):
-    """Get audit trail logs with filtering."""
     return await logging_service.get_audit_logs(
-        page=page,
-        page_size=page_size,
-        user_id=user_id,
-        entity_type=entity_type,
-        action=action,
+        page=page, page_size=page_size, user_id=user_id,
+        entity_type=entity_type, action=action,
     )
 
 
@@ -166,12 +109,8 @@ async def get_scraper_logs(
     status: Optional[str] = Query(default=None),
     current_user: User = Depends(get_current_user),
 ):
-    """Get scraper execution logs with filtering."""
     return await logging_service.get_scraper_logs(
-        page=page,
-        page_size=page_size,
-        scraper_name=scraper_name,
-        status=status,
+        page=page, page_size=page_size, scraper_name=scraper_name, status=status,
     )
 
 
@@ -183,20 +122,13 @@ async def get_ai_logs(
     feature: Optional[str] = Query(default=None),
     current_user: User = Depends(get_current_user),
 ):
-    """Get AI service usage logs with filtering."""
     return await logging_service.get_ai_logs(
-        page=page,
-        page_size=page_size,
-        service=service,
-        feature=feature,
+        page=page, page_size=page_size, service=service, feature=feature,
     )
 
 
 @router.get("/logs/ai/stats")
-async def get_ai_usage_stats(
-    current_user: User = Depends(get_current_user),
-):
-    """Get AI usage statistics."""
+async def get_ai_usage_stats(current_user: User = Depends(get_current_user)):
     return await logging_service.get_ai_usage_stats()
 
 
@@ -208,60 +140,30 @@ async def get_job_logs(
     status: Optional[str] = Query(default=None),
     current_user: User = Depends(get_current_user),
 ):
-    """Get background job logs with filtering."""
     return await logging_service.get_job_logs(
-        page=page,
-        page_size=page_size,
-        job_name=job_name,
-        status=status,
+        page=page, page_size=page_size, job_name=job_name, status=status,
     )
 
 
 # ==================== Dashboard Stats ====================
 
 @router.get("/stats/overview")
-async def get_admin_stats(
-    current_user: User = Depends(get_current_user),
-):
-    """Get admin dashboard overview statistics."""
+async def get_admin_stats(current_user: User = Depends(get_current_user)):
     from app.db.supabase import get_supabase_service_client
     db = get_supabase_service_client()
 
-    # Get counts from various tables
     users_result = db.table("users").select("id", count="exact").execute()
     portfolios_result = db.table("portfolios").select("id", count="exact").execute()
     transactions_result = db.table("transactions").select("id", count="exact").execute()
     stocks_result = db.table("stocks").select("symbol", count="exact").execute()
     news_result = db.table("news_articles").select("id", count="exact").execute()
-
-    # Get recent error count
     error_result = db.table("error_logs").select("id", count="exact").eq("resolved", False).execute()
 
-    # Get scheduler status
-    scheduler = get_scheduler()
-    scheduler_status = {
-        "is_running": scheduler._is_running,
-        "job_count": len(scheduler.scheduler.get_jobs()) if scheduler._is_running else 0,
-    }
-
     return {
-        "users": {
-            "total": users_result.count or 0,
-        },
-        "portfolios": {
-            "total": portfolios_result.count or 0,
-        },
-        "transactions": {
-            "total": transactions_result.count or 0,
-        },
-        "stocks": {
-            "total": stocks_result.count or 0,
-        },
-        "news": {
-            "total": news_result.count or 0,
-        },
-        "errors": {
-            "unresolved": error_result.count or 0,
-        },
-        "scheduler": scheduler_status,
+        "users": {"total": users_result.count or 0},
+        "portfolios": {"total": portfolios_result.count or 0},
+        "transactions": {"total": transactions_result.count or 0},
+        "stocks": {"total": stocks_result.count or 0},
+        "news": {"total": news_result.count or 0},
+        "errors": {"unresolved": error_result.count or 0},
     }

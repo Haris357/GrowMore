@@ -1,4 +1,3 @@
-from datetime import datetime
 from fastapi import APIRouter, Depends, Query
 from typing import List, Optional
 from uuid import UUID
@@ -9,7 +8,6 @@ from app.schemas.stock import (
     StockResponse,
     StockDetailResponse,
     StockHistoryListResponse,
-    TopStockResponse,
     CompanyResponse,
     FinancialStatementsListResponse,
     FinancialStatementResponse,
@@ -98,90 +96,6 @@ async def list_stocks(
         has_next=result["has_next"],
         has_previous=result["has_previous"],
     )
-
-
-@router.get("/top-gainers", response_model=TopStockResponse)
-async def get_top_gainers(
-    market_id: UUID,
-    limit: int = Query(default=10, ge=1, le=50),
-    db=Depends(get_db),
-):
-    stock_service = StockService(db)
-    stocks = await stock_service.get_top_gainers(market_id, limit)
-
-    items = []
-    for item in stocks:
-        company = item.get("companies", {})
-        items.append(StockResponse(
-            id=item["id"],
-            company_id=item["company_id"],
-            symbol=company.get("symbol", ""),
-            name=company.get("name", ""),
-            current_price=item.get("current_price"),
-            change_amount=item.get("change_amount"),
-            change_percentage=item.get("change_percentage"),
-            volume=item.get("volume"),
-            market_cap=item.get("market_cap"),
-            last_updated=item.get("last_updated"),
-        ))
-
-    return TopStockResponse(stocks=items, as_of=datetime.utcnow())
-
-
-@router.get("/top-losers", response_model=TopStockResponse)
-async def get_top_losers(
-    market_id: UUID,
-    limit: int = Query(default=10, ge=1, le=50),
-    db=Depends(get_db),
-):
-    stock_service = StockService(db)
-    stocks = await stock_service.get_top_losers(market_id, limit)
-
-    items = []
-    for item in stocks:
-        company = item.get("companies", {})
-        items.append(StockResponse(
-            id=item["id"],
-            company_id=item["company_id"],
-            symbol=company.get("symbol", ""),
-            name=company.get("name", ""),
-            current_price=item.get("current_price"),
-            change_amount=item.get("change_amount"),
-            change_percentage=item.get("change_percentage"),
-            volume=item.get("volume"),
-            market_cap=item.get("market_cap"),
-            last_updated=item.get("last_updated"),
-        ))
-
-    return TopStockResponse(stocks=items, as_of=datetime.utcnow())
-
-
-@router.get("/most-active", response_model=TopStockResponse)
-async def get_most_active(
-    market_id: UUID,
-    limit: int = Query(default=10, ge=1, le=50),
-    db=Depends(get_db),
-):
-    stock_service = StockService(db)
-    stocks = await stock_service.get_most_active(market_id, limit)
-
-    items = []
-    for item in stocks:
-        company = item.get("companies", {})
-        items.append(StockResponse(
-            id=item["id"],
-            company_id=item["company_id"],
-            symbol=company.get("symbol", ""),
-            name=company.get("name", ""),
-            current_price=item.get("current_price"),
-            change_amount=item.get("change_amount"),
-            change_percentage=item.get("change_percentage"),
-            volume=item.get("volume"),
-            market_cap=item.get("market_cap"),
-            last_updated=item.get("last_updated"),
-        ))
-
-    return TopStockResponse(stocks=items, as_of=datetime.utcnow())
 
 
 @router.get("/{stock_id}", response_model=StockDetailResponse)

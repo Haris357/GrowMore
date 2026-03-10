@@ -50,24 +50,70 @@ export interface StockQuote {
   sector_id?: string;
   sector_name?: string;
   sector?: string;
+  sector_code?: string;
   market_id?: string;
+
+  // Price Data
   current_price: number;
   change?: number;
   change_amount?: number;
   change_percent?: number;
   change_percentage?: number;
   open?: number;
+  open_price?: number;
   high?: number;
+  high_price?: number;
   low?: number;
+  low_price?: number;
   close?: number;
+  previous_close?: number;
   volume?: number;
-  market_cap?: number;
-  pe_ratio?: number;
-  eps?: number;
-  dividend_yield?: number;
+  avg_volume?: number;
+
+  // 52 Week
   week_52_high?: number;
   week_52_low?: number;
-  avg_volume?: number;
+
+  // Valuation
+  market_cap?: number;
+  pe_ratio?: number;
+  pb_ratio?: number;
+  ps_ratio?: number;
+  peg_ratio?: number;
+  ev_ebitda?: number;
+
+  // Per Share
+  eps?: number;
+  book_value?: number;
+  dps?: number;
+  dividend_yield?: number;
+
+  // Profitability
+  roe?: number;
+  roa?: number;
+  roce?: number;
+  gross_margin?: number;
+  operating_margin?: number;
+  net_margin?: number;
+  profit_margin?: number;
+
+  // Leverage
+  debt_to_equity?: number;
+  debt_to_assets?: number;
+  current_ratio?: number;
+  quick_ratio?: number;
+  interest_coverage?: number;
+
+  // Growth
+  revenue_growth?: number;
+  earnings_growth?: number;
+  profit_growth?: number;
+
+  // Other
+  beta?: number;
+  payout_ratio?: number;
+  fcf_yield?: number;
+
   last_updated?: string;
   timestamp?: string;
 }

@@ -34,7 +34,7 @@ class PortfolioResponse(BaseModel):
 
 
 class HoldingCreate(BaseModel):
-    holding_type: str = Field(..., pattern="^(stock|commodity|bank_product)$")
+    holding_type: str = Field(..., pattern="^(stock|commodity)$")
     holding_id: UUID
     quantity: Decimal = Field(..., gt=0)
     avg_buy_price: Decimal = Field(..., gt=0)
@@ -70,7 +70,7 @@ class HoldingResponse(BaseModel):
 
 
 class TransactionCreate(BaseModel):
-    holding_type: str = Field(..., pattern="^(stock|commodity|bank_product)$")
+    holding_type: str = Field(..., pattern="^(stock|commodity)$")
     holding_id: UUID
     transaction_type: str = Field(..., pattern="^(buy|sell)$")
     quantity: Decimal = Field(..., gt=0)

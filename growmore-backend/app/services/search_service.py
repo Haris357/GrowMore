@@ -5,7 +5,6 @@ from supabase import Client
 
 from app.repositories.stock_repository import CompanyRepository
 from app.repositories.commodity_repository import CommodityRepository
-from app.repositories.bank_product_repository import BankRepository, BankProductRepository
 from app.repositories.news_repository import NewsRepository
 from app.db.vector_store import VectorStore
 from app.ai.embeddings import EmbeddingService
@@ -16,8 +15,6 @@ class SearchService:
         self.db = db
         self.company_repo = CompanyRepository(db)
         self.commodity_repo = CommodityRepository(db)
-        self.bank_repo = BankRepository(db)
-        self.product_repo = BankProductRepository(db)
         self.news_repo = NewsRepository(db)
         self.vector_store = VectorStore(db)
         self.embedding_service = EmbeddingService()
@@ -28,14 +25,12 @@ class SearchService:
         market_id: Optional[UUID] = None,
         include_stocks: bool = True,
         include_commodities: bool = True,
-        include_banks: bool = True,
         include_news: bool = True,
         limit: int = 10,
     ) -> Dict[str, Any]:
         results = {
             "stocks": [],
             "commodities": [],
-            "banks": [],
             "news": [],
         }
 
@@ -69,27 +64,6 @@ class SearchService:
                     "type": "commodity",
                 }
                 for c in commodity_result.data or []
-            ]
-
-        if include_banks:
-            bank_result = self.db.table("banks").select("id, name, code, logo_url").ilike(
-                "name", f"%{query}%"
-            )
-
-            if market_id:
-                bank_result = bank_result.eq("market_id", str(market_id))
-
-            bank_result = bank_result.limit(limit).execute()
-
-            results["banks"] = [
-                {
-                    "id": b["id"],
-                    "name": b["name"],
-                    "code": b["code"],
-                    "logo_url": b["logo_url"],
-                    "type": "bank",
-                }
-                for b in bank_result.data or []
             ]
 
         if include_news:

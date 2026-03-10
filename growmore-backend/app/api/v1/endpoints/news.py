@@ -1,5 +1,9 @@
+"""
+GrowNews Network — News API Endpoints.
+"""
+
 from datetime import datetime
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, BackgroundTasks, Depends, Query
 from typing import List, Optional
 from uuid import UUID
 
@@ -188,6 +192,38 @@ async def search_news(
         has_next=result["has_next"],
         has_previous=result["has_previous"],
     )
+
+
+@router.get("/brief")
+async def get_market_brief(
+    category: Optional[str] = Query(None, pattern="^(stocks|commodities|crypto|global)$"),
+):
+    """
+    Get AI-generated market brief from recent news.
+    Covers stocks, gold/silver, crypto, and global economy.
+    """
+    from app.services.news_aggregator import generate_market_brief
+    return await generate_market_brief(category)
+
+
+@router.post("/aggregate")
+async def trigger_aggregation(
+    background_tasks: BackgroundTasks,
+    category: Optional[str] = Query(None),
+):
+    """
+    Trigger news aggregation from RSS feeds.
+    Fetches latest articles and saves to database.
+    """
+    from app.services.news_aggregator import aggregate_and_save, process_unprocessed_articles
+
+    async def _run():
+        cats = [category] if category else None
+        await aggregate_and_save(cats)
+        await process_unprocessed_articles(limit=20)
+
+    background_tasks.add_task(_run)
+    return {"status": "started", "message": "News aggregation started in background"}
 
 
 @router.get("/{article_id}", response_model=NewsArticleDetailResponse)

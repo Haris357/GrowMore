@@ -8,7 +8,6 @@ from fastapi.responses import JSONResponse
 from app.config.settings import settings
 from app.api.v1.router import api_router
 from app.core.exceptions import GrowMoreException
-from app.scrapers.scheduler import get_scheduler
 from app.logging.middleware import setup_request_logging
 
 
@@ -26,21 +25,16 @@ print(f"CORS Origins configured: {settings.cors_origins}")
 async def lifespan(app: FastAPI):
     logger.info(f"Starting {settings.app_name}...")
 
-    # Start scheduler based on ENABLE_SCHEDULER env var (defaults to True in production)
-    enable_scheduler = getattr(settings, 'enable_scheduler', settings.is_production)
-    if enable_scheduler:
-        scheduler = get_scheduler()
-        scheduler.start()
-        logger.info("Scraper scheduler started")
-    else:
-        logger.info("Scraper scheduler disabled. Run manually with: python scripts/run_scrapers.py")
+    # Initialize PSX sync service (warms symbol cache for fast lookups)
+    from app.services.psx import PSXSyncService
+    psx_sync = PSXSyncService()
+    try:
+        psx_sync.initialize()
+        logger.info("PSX sync service initialized")
+    except Exception as e:
+        logger.warning(f"PSX sync service init warning: {e}")
 
     yield
-
-    if enable_scheduler:
-        scheduler = get_scheduler()
-        scheduler.stop()
-        logger.info("Scraper scheduler stopped")
 
     logger.info(f"Shutting down {settings.app_name}...")
 

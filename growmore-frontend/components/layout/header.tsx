@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { Bell, Moon, Sun, LogOut, Calculator, Settings } from 'lucide-react';
+import { Bell, Moon, Sun, LogOut, Settings } from 'lucide-react';
 import { useTheme } from 'next-themes';
 import { useRouter } from 'next/navigation';
 import { Button } from '@/components/ui/button';
@@ -108,12 +108,6 @@ export function Header({ onNotificationClick }: HeaderProps) {
                 </div>
               </DropdownMenuLabel>
               <DropdownMenuSeparator />
-              <DropdownMenuItem asChild>
-                <Link href="/calculators" className="flex items-center">
-                  <Calculator className="mr-2 h-4 w-4" />
-                  <span>Calculators</span>
-                </Link>
-              </DropdownMenuItem>
               <DropdownMenuItem asChild>
                 <Link href="/settings" className="flex items-center">
                   <Settings className="mr-2 h-4 w-4" />

@@ -70,113 +70,6 @@ def seed_companies():
             print(f"Company already exists: {company['name']}")
 
 
-def seed_banks():
-    client = get_supabase_service_client()
-    market_id = get_market_id()
-
-    if not market_id:
-        print("Market not found. Run seed_markets.py first.")
-        return
-
-    banks = [
-        {"code": "HBL", "name": "Habib Bank Limited", "website": "https://www.hbl.com"},
-        {"code": "UBL", "name": "United Bank Limited", "website": "https://www.ubldigital.com"},
-        {"code": "MCB", "name": "MCB Bank Limited", "website": "https://www.mcb.com.pk"},
-        {"code": "ABL", "name": "Allied Bank Limited", "website": "https://www.abl.com"},
-        {"code": "NBP", "name": "National Bank of Pakistan", "website": "https://www.nbp.com.pk"},
-        {"code": "BAFL", "name": "Bank Alfalah Limited", "website": "https://www.bankalfalah.com"},
-        {"code": "MEBL", "name": "Meezan Bank Limited", "website": "https://www.meezanbank.com"},
-        {"code": "BAHL", "name": "Bank Al-Habib Limited", "website": "https://www.bankalhabib.com"},
-        {"code": "FABL", "name": "Faysal Bank Limited", "website": "https://www.faysalbank.com"},
-        {"code": "AKBL", "name": "Askari Bank Limited", "website": "https://www.askaribank.com.pk"},
-    ]
-
-    for bank in banks:
-        bank["market_id"] = market_id
-        bank["is_active"] = True
-
-        existing = client.table("banks").select("id").eq("market_id", market_id).eq("code", bank["code"]).execute()
-        if not existing.data:
-            client.table("banks").insert(bank).execute()
-            print(f"Created bank: {bank['name']}")
-        else:
-            print(f"Bank already exists: {bank['name']}")
-
-
-def seed_bank_products():
-    client = get_supabase_service_client()
-
-    banks = client.table("banks").select("id, code").execute().data
-    product_types = client.table("bank_product_types").select("id, name").execute().data
-
-    if not banks or not product_types:
-        print("Banks or product types not found. Run seed scripts first.")
-        return
-
-    bank_map = {b["code"]: b["id"] for b in banks}
-    type_map = {t["name"]: t["id"] for t in product_types}
-
-    products = [
-        {
-            "bank_code": "HBL",
-            "product_type": "Savings Account",
-            "name": "HBL ValuePlus Savings",
-            "interest_rate": 14.5,
-            "min_deposit": 5000,
-        },
-        {
-            "bank_code": "HBL",
-            "product_type": "Fixed Deposit",
-            "name": "HBL Term Deposit",
-            "interest_rate": 18.0,
-            "min_deposit": 25000,
-            "tenure_min_days": 30,
-            "tenure_max_days": 365,
-        },
-        {
-            "bank_code": "MEBL",
-            "product_type": "Islamic Savings",
-            "name": "Meezan Bachat Account",
-            "interest_rate": 13.5,
-            "min_deposit": 1000,
-        },
-        {
-            "bank_code": "MEBL",
-            "product_type": "Islamic Term Deposit",
-            "name": "Meezan Term Deposit",
-            "interest_rate": 17.5,
-            "min_deposit": 10000,
-            "tenure_min_days": 30,
-            "tenure_max_days": 365,
-        },
-        {
-            "bank_code": "UBL",
-            "product_type": "Savings Account",
-            "name": "UBL Star Saver",
-            "interest_rate": 15.0,
-            "min_deposit": 10000,
-        },
-    ]
-
-    for product in products:
-        bank_id = bank_map.get(product.pop("bank_code"))
-        type_id = type_map.get(product.pop("product_type"))
-
-        if not bank_id or not type_id:
-            continue
-
-        product["bank_id"] = bank_id
-        product["product_type_id"] = type_id
-        product["is_active"] = True
-
-        existing = client.table("bank_products").select("id").eq("bank_id", bank_id).eq("name", product["name"]).execute()
-        if not existing.data:
-            client.table("bank_products").insert(product).execute()
-            print(f"Created bank product: {product['name']}")
-        else:
-            print(f"Bank product already exists: {product['name']}")
-
-
 def seed_commodities():
     client = get_supabase_service_client()
     market_id = get_market_id()
@@ -219,12 +112,6 @@ def main():
 
     print("\nSeeding companies...")
     seed_companies()
-
-    print("\nSeeding banks...")
-    seed_banks()
-
-    print("\nSeeding bank products...")
-    seed_bank_products()
 
     print("\nSeeding commodities...")
     seed_commodities()

@@ -91,33 +91,6 @@ class StockRepository(BaseRepository[Stock]):
             "has_previous": page > 1,
         }
 
-    async def get_top_gainers(self, market_id: UUID, limit: int = 10) -> List[Dict[str, Any]]:
-        result = self.client.table(self.table_name).select(
-            "*, companies!inner(id, market_id, symbol, name)"
-        ).eq("companies.market_id", str(market_id)).gt(
-            "change_percentage", 0
-        ).order("change_percentage", desc=True).limit(limit).execute()
-
-        return result.data or []
-
-    async def get_top_losers(self, market_id: UUID, limit: int = 10) -> List[Dict[str, Any]]:
-        result = self.client.table(self.table_name).select(
-            "*, companies!inner(id, market_id, symbol, name)"
-        ).eq("companies.market_id", str(market_id)).lt(
-            "change_percentage", 0
-        ).order("change_percentage", desc=False).limit(limit).execute()
-
-        return result.data or []
-
-    async def get_most_active(self, market_id: UUID, limit: int = 10) -> List[Dict[str, Any]]:
-        result = self.client.table(self.table_name).select(
-            "*, companies!inner(id, market_id, symbol, name)"
-        ).eq("companies.market_id", str(market_id)).order(
-            "volume", desc=True
-        ).limit(limit).execute()
-
-        return result.data or []
-
     async def update_stock_price(
         self, stock_id: UUID, price_data: Dict[str, Any]
     ) -> Optional[Stock]:

@@ -40,7 +40,7 @@ import {
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { StockQuote } from '@/types/market';
-import { FilterModal, ScreenerFilters, defaultFilters, getActiveFiltersList, clearSingleFilter } from '@/components/stocks/filter-modal';
+import { FilterModal, ScreenerFilters, defaultFilters, getActiveFiltersList, clearSingleFilter, buildScreenerFilters } from '@/components/stocks/filter-modal';
 import { ColumnsModal, ColumnConfig, availableColumns } from '@/components/stocks/columns-modal';
 import { StrategiesModal } from '@/components/stocks/strategies-modal';
 import { StockDetailDrawer } from '@/components/stocks/stock-detail-drawer';
@@ -84,20 +84,35 @@ export default function StocksPage() {
   const fetchStocks = useCallback(async (page: number, size: number) => {
     try {
       setIsLoading(true);
-      const response = await api.get('/stocks', {
-        params: { page, page_size: size },
+
+      // Build backend filters from ScreenerFilters
+      const backendFilters = buildScreenerFilters(filters);
+
+      // Add sort
+      backendFilters.sort = `${sortBy}_${sortOrder}`;
+
+      const offset = (page - 1) * size;
+
+      const response = await api.post('/screener/run', {
+        filters: backendFilters,
+        limit: size,
+        offset: offset,
       });
 
-      const data = response.data?.items || response.data?.stocks || response.data || [];
-      setStocks(Array.isArray(data) ? data : []);
+      const data = response.data;
+      const stocksList = data?.stocks || [];
+      const totalCount = data?.total_count || data?.count || 0;
+      const totalPages = Math.max(1, Math.ceil(totalCount / size));
+
+      setStocks(Array.isArray(stocksList) ? stocksList : []);
 
       setPagination({
-        total: response.data?.total || 0,
-        page: response.data?.page || page,
-        page_size: response.data?.page_size || size,
-        total_pages: response.data?.total_pages || 1,
-        has_next: response.data?.has_next || false,
-        has_previous: (response.data?.page || page) > 1,
+        total: totalCount,
+        page: page,
+        page_size: size,
+        total_pages: totalPages,
+        has_next: page < totalPages,
+        has_previous: page > 1,
       });
       setCurrentPage(page);
     } catch (err: any) {
@@ -107,48 +122,22 @@ export default function StocksPage() {
     } finally {
       setIsLoading(false);
     }
-  }, []);
+  }, [filters, sortBy, sortOrder]);
 
   useEffect(() => {
     fetchStocks(1, pageSize);
   }, [fetchStocks, pageSize]);
 
-  // Apply filters to stocks
-  const applyFilters = (stock: StockQuote): boolean => {
-    const price = parseFloat(String(stock.current_price || 0));
-    const changePct = parseFloat(String(stock.change_percentage ?? stock.change_percent ?? 0));
-    const volume = Number(stock.volume || 0);
-
-    if (filters.price_min > 0 && price < filters.price_min) return false;
-    if (filters.price_max < 10000 && price > filters.price_max) return false;
-    if (filters.change_pct_min > -100 && changePct < filters.change_pct_min) return false;
-    if (filters.change_pct_max < 100 && changePct > filters.change_pct_max) return false;
-    if (filters.volume_min > 0 && volume < filters.volume_min) return false;
-
-    if (filters.sector !== 'All Sectors') {
-      const stockSector = stock.sector_name || stock.sector || '';
-      if (!stockSector.toLowerCase().includes(filters.sector.toLowerCase())) return false;
-    }
-
-    return true;
-  };
-
-  // Filter and sort stocks
-  const processedStocks = stocks
-    .filter((stock) => {
-      const matchesSearch =
-        (stock.symbol || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (stock.name || stock.company_name || '').toLowerCase().includes(searchTerm.toLowerCase());
-      return matchesSearch && applyFilters(stock);
-    })
-    .sort((a, b) => {
-      const aVal = (a as any)[sortBy] ?? '';
-      const bVal = (b as any)[sortBy] ?? '';
-      if (sortOrder === 'asc') {
-        return aVal > bVal ? 1 : -1;
-      }
-      return aVal < bVal ? 1 : -1;
-    });
+  // Client-side search within current page (filters & sorting are server-side)
+  const processedStocks = searchTerm
+    ? stocks.filter((stock) => {
+        const term = searchTerm.toLowerCase();
+        return (
+          (stock.symbol || '').toLowerCase().includes(term) ||
+          (stock.name || stock.company_name || '').toLowerCase().includes(term)
+        );
+      })
+    : stocks;
 
   const handleSort = (key: string) => {
     if (sortBy === key) {
@@ -165,7 +154,6 @@ export default function StocksPage() {
 
   const handlePageSizeChange = (size: string) => {
     setPageSize(Number(size));
-    fetchStocks(1, Number(size));
   };
 
   const handleApplyFilters = (newFilters: ScreenerFilters) => {

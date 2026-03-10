@@ -27,14 +27,7 @@ class Settings(BaseSettings):
     groq_model: str = Field(default="llama-3.1-70b-versatile", env="GROQ_MODEL")
     groq_embedding_model: str = Field(default="llama-3.1-8b-instant", env="GROQ_EMBEDDING_MODEL")
 
-    reddit_client_id: Optional[str] = Field(default=None, env="REDDIT_CLIENT_ID")
-    reddit_client_secret: Optional[str] = Field(default=None, env="REDDIT_CLIENT_SECRET")
-    reddit_user_agent: str = Field(default="GrowMore/1.0", env="REDDIT_USER_AGENT")
-
-    scrape_interval_minutes: int = Field(default=30, env="SCRAPE_INTERVAL_MINUTES")
-    news_scrape_interval_minutes: int = Field(default=15, env="NEWS_SCRAPE_INTERVAL_MINUTES")
-    enable_scheduler: bool = Field(default=False, env="ENABLE_SCHEDULER")
-
+    openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
     cors_origins: List[str] = Field(
         default=["http://localhost:3000", "http://localhost:5173"],
         env="CORS_ORIGINS",
@@ -42,6 +35,10 @@ class Settings(BaseSettings):
 
     rate_limit_per_minute: int = Field(default=60, env="RATE_LIMIT_PER_MINUTE")
     rate_limit_authenticated: int = Field(default=120, env="RATE_LIMIT_AUTHENTICATED")
+
+    psx_terminal_base_url: str = Field(default="https://psxterminal.com", env="PSX_TERMINAL_BASE_URL")
+    psx_terminal_ws_url: str = Field(default="wss://psxterminal.com", env="PSX_TERMINAL_WS_URL")
+    dps_psx_base_url: str = Field(default="https://dps.psx.com.pk", env="DPS_PSX_BASE_URL")
 
     log_level: str = Field(default="INFO", env="LOG_LEVEL")
 

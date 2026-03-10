@@ -8,7 +8,7 @@ export interface Portfolio {
   updated_at: string;
 }
 
-export type AssetType = 'stock' | 'commodity' | 'bank_product' | 'other';
+export type AssetType = 'stock' | 'commodity' | 'other';
 
 export interface Holding {
   id: string;

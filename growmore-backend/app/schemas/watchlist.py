@@ -33,7 +33,7 @@ class WatchlistResponse(BaseModel):
 
 
 class WatchlistItemCreate(BaseModel):
-    item_type: str = Field(..., pattern="^(stock|commodity|bank_product)$")
+    item_type: str = Field(..., pattern="^(stock|commodity)$")
     item_id: UUID
     price_alert_above: Optional[Decimal] = Field(None, gt=0)
     price_alert_below: Optional[Decimal] = Field(None, gt=0)

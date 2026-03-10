@@ -7,7 +7,6 @@ import {
   LayoutDashboard,
   TrendingUp,
   Coins,
-  Building2,
   Newspaper,
   Briefcase,
   Menu,
@@ -27,8 +26,7 @@ const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Stocks', href: '/stocks', icon: TrendingUp },
   { name: 'Commodities', href: '/commodities', icon: Coins },
-  { name: 'Bank Products', href: '/bank-products', icon: Building2 },
-  { name: 'News', href: '/news', icon: Newspaper },
+  { name: 'GrowNews', href: '/news', icon: Newspaper },
   { name: 'Portfolio', href: '/portfolio', icon: Briefcase },
 ];
 

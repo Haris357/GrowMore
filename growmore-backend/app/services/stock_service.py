@@ -99,15 +99,6 @@ class StockService:
             "history": history,
         }
 
-    async def get_top_gainers(self, market_id: UUID, limit: int = 10) -> List[Dict[str, Any]]:
-        return await self.stock_repo.get_top_gainers(market_id, limit)
-
-    async def get_top_losers(self, market_id: UUID, limit: int = 10) -> List[Dict[str, Any]]:
-        return await self.stock_repo.get_top_losers(market_id, limit)
-
-    async def get_most_active(self, market_id: UUID, limit: int = 10) -> List[Dict[str, Any]]:
-        return await self.stock_repo.get_most_active(market_id, limit)
-
     async def search_stocks(
         self, market_id: UUID, search_term: str, limit: int = 20
     ) -> List[Company]:

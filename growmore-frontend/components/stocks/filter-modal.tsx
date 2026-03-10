@@ -102,6 +102,211 @@ const PSX_SECTORS = [
   'Woollen',
 ];
 
+// Reverse mapping: backend sector code → sector name
+const PSX_SECTOR_CODE_TO_NAME: Record<string, string> = {
+  'BANK': 'Commercial Banks',
+  'CEMENT': 'Cement',
+  'FERT': 'Fertilizer',
+  'OIL': 'Oil & Gas Exploration Companies',
+  'OILM': 'Oil & Gas Marketing Companies',
+  'POWER': 'Power Generation & Distribution',
+  'PHARMA': 'Pharmaceuticals',
+  'TECH': 'Technology & Communication',
+  'AUTO': 'Automobile Assembler',
+  'AUTOPART': 'Automobile Parts & Accessories',
+  'CHEM': 'Chemical',
+  'TEXTILE': 'Textile Composite',
+  'SUGAR': 'Sugar & Allied Industries',
+  'FOOD': 'Food & Personal Care Products',
+  'INS': 'Insurance',
+  'INVBANK': 'Inv. Banks / Inv. Cos. / Securities Cos.',
+  'STEEL': 'Engineering',
+  'GLASS': 'Glass & Ceramics',
+  'PAPER': 'Paper & Board',
+  'REFINERY': 'Refinery',
+  'TRANSPORT': 'Transport',
+  'TELECOM': 'Telecom',
+  'MISC': 'Miscellaneous',
+};
+
+/**
+ * Convert frontend ScreenerFilters to backend POST /screener/run filter dict.
+ * Only includes non-default values.
+ */
+export function buildScreenerFilters(filters: ScreenerFilters): Record<string, any> {
+  const backend: Record<string, any> = {};
+
+  // Sector
+  if (filters.sector !== 'All Sectors') {
+    backend.sector_name = filters.sector;
+  }
+
+  // Price
+  if (filters.price_min > 0 || filters.price_max < 10000) {
+    const range: any = {};
+    if (filters.price_min > 0) range.min = filters.price_min;
+    if (filters.price_max < 10000) range.max = filters.price_max;
+    backend.price = range;
+  }
+
+  // Change %
+  if (filters.change_pct_min > -100 || filters.change_pct_max < 100) {
+    const range: any = {};
+    if (filters.change_pct_min > -100) range.min = filters.change_pct_min;
+    if (filters.change_pct_max < 100) range.max = filters.change_pct_max;
+    backend.change_pct = range;
+  }
+
+  // Volume
+  if (filters.volume_min > 0) {
+    backend.volume = { min: filters.volume_min };
+  }
+
+  // Market Cap (frontend is in Cr, backend is absolute PKR; 1 Cr = 10,000,000)
+  if (filters.market_cap_min > 0 || filters.market_cap_max < 1000000) {
+    const range: any = {};
+    if (filters.market_cap_min > 0) range.min = filters.market_cap_min * 10000000;
+    if (filters.market_cap_max < 1000000) range.max = filters.market_cap_max * 10000000;
+    backend.market_cap = range;
+  }
+
+  // P/E
+  if (filters.pe_min > 0 || filters.pe_max < 100) {
+    const range: any = {};
+    if (filters.pe_min > 0) range.min = filters.pe_min;
+    if (filters.pe_max < 100) range.max = filters.pe_max;
+    backend.pe_ratio = range;
+  }
+
+  // P/B
+  if (filters.pb_min > 0 || filters.pb_max < 20) {
+    const range: any = {};
+    if (filters.pb_min > 0) range.min = filters.pb_min;
+    if (filters.pb_max < 20) range.max = filters.pb_max;
+    backend.pb_ratio = range;
+  }
+
+  // EPS
+  if (filters.eps_min > -100 || filters.eps_max < 1000) {
+    const range: any = {};
+    if (filters.eps_min > -100) range.min = filters.eps_min;
+    if (filters.eps_max < 1000) range.max = filters.eps_max;
+    backend.eps = range;
+  }
+
+  // Dividend Yield
+  if (filters.dividend_yield_min > 0) {
+    backend.div_yield = { min: filters.dividend_yield_min };
+  }
+
+  // ROE
+  if (filters.roe_min > 0) {
+    backend.roe = { min: filters.roe_min };
+  }
+
+  // Debt/Equity
+  if (filters.debt_to_equity_max < 5) {
+    backend.debt_equity = { max: filters.debt_to_equity_max };
+  }
+
+  // Revenue Growth
+  if (filters.revenue_growth_min > -50) {
+    backend.revenue_growth = { min: filters.revenue_growth_min };
+  }
+
+  // Profit Growth
+  if (filters.profit_growth_min > -50) {
+    backend.profit_growth = { min: filters.profit_growth_min };
+  }
+
+  return backend;
+}
+
+/**
+ * Convert backend strategy filters to frontend ScreenerFilters.
+ * Used by strategies modal to populate filters from API strategies.
+ */
+export function backendFiltersToScreener(backendFilters: Record<string, any>): ScreenerFilters {
+  const f = { ...defaultFilters };
+
+  // Sector
+  if (backendFilters.sector_code) {
+    const name = PSX_SECTOR_CODE_TO_NAME[backendFilters.sector_code];
+    if (name) f.sector = name;
+  }
+  if (backendFilters.sector_name) {
+    f.sector = backendFilters.sector_name;
+  }
+
+  // Price
+  if (backendFilters.price) {
+    if (backendFilters.price.min != null) f.price_min = backendFilters.price.min;
+    if (backendFilters.price.max != null) f.price_max = backendFilters.price.max;
+  }
+
+  // Change %
+  if (backendFilters.change_pct) {
+    if (backendFilters.change_pct.min != null) f.change_pct_min = backendFilters.change_pct.min;
+    if (backendFilters.change_pct.max != null) f.change_pct_max = backendFilters.change_pct.max;
+  }
+
+  // Volume
+  if (backendFilters.volume) {
+    if (backendFilters.volume.min != null) f.volume_min = backendFilters.volume.min;
+  }
+
+  // Market Cap (backend absolute → frontend Cr)
+  if (backendFilters.market_cap) {
+    if (backendFilters.market_cap.min != null) f.market_cap_min = backendFilters.market_cap.min / 10000000;
+    if (backendFilters.market_cap.max != null) f.market_cap_max = backendFilters.market_cap.max / 10000000;
+  }
+
+  // P/E
+  if (backendFilters.pe_ratio) {
+    if (backendFilters.pe_ratio.min != null) f.pe_min = backendFilters.pe_ratio.min;
+    if (backendFilters.pe_ratio.max != null) f.pe_max = backendFilters.pe_ratio.max;
+  }
+
+  // P/B
+  if (backendFilters.pb_ratio) {
+    if (backendFilters.pb_ratio.min != null) f.pb_min = backendFilters.pb_ratio.min;
+    if (backendFilters.pb_ratio.max != null) f.pb_max = backendFilters.pb_ratio.max;
+  }
+
+  // EPS
+  if (backendFilters.eps) {
+    if (backendFilters.eps.min != null) f.eps_min = backendFilters.eps.min;
+    if (backendFilters.eps.max != null) f.eps_max = backendFilters.eps.max;
+  }
+
+  // Dividend Yield
+  if (backendFilters.div_yield) {
+    if (backendFilters.div_yield.min != null) f.dividend_yield_min = backendFilters.div_yield.min;
+  }
+
+  // ROE
+  if (backendFilters.roe) {
+    if (backendFilters.roe.min != null) f.roe_min = backendFilters.roe.min;
+  }
+
+  // Debt/Equity
+  if (backendFilters.debt_equity) {
+    if (backendFilters.debt_equity.max != null) f.debt_to_equity_max = backendFilters.debt_equity.max;
+  }
+
+  // Revenue Growth
+  if (backendFilters.revenue_growth) {
+    if (backendFilters.revenue_growth.min != null) f.revenue_growth_min = backendFilters.revenue_growth.min;
+  }
+
+  // Profit Growth
+  if (backendFilters.profit_growth) {
+    if (backendFilters.profit_growth.min != null) f.profit_growth_min = backendFilters.profit_growth.min;
+  }
+
+  return f;
+}
+
 interface FilterModalProps {
   isOpen: boolean;
   onClose: () => void;

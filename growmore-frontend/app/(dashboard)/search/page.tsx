@@ -14,7 +14,6 @@ import {
   TrendingUp,
   TrendingDown,
   Newspaper,
-  Building2,
   Coins,
   Loader2,
   Sparkles,
@@ -29,7 +28,7 @@ import Link from 'next/link';
 
 interface SearchResult {
   id: string;
-  type: 'stock' | 'commodity' | 'bank' | 'news';
+  type: 'stock' | 'commodity' | 'news';
   symbol?: string;
   name?: string;
   title?: string;
@@ -45,14 +44,12 @@ interface SearchResult {
 interface SearchResults {
   stocks: SearchResult[];
   commodities: SearchResult[];
-  banks: SearchResult[];
   news: SearchResult[];
 }
 
 const typeColors: Record<string, string> = {
   stock: 'bg-blue-500/10 text-blue-500 border-blue-500/20',
   commodity: 'bg-yellow-500/10 text-yellow-500 border-yellow-500/20',
-  bank: 'bg-green-500/10 text-green-500 border-green-500/20',
   news: 'bg-purple-500/10 text-purple-500 border-purple-500/20',
 };
 
@@ -97,7 +94,6 @@ export default function SearchPage() {
             q: searchQuery,
             include_stocks: true,
             include_commodities: true,
-            include_banks: true,
             include_news: true,
             limit: 20,
           },
@@ -128,8 +124,6 @@ export default function SearchPage() {
         return `/stocks/${result.symbol || result.id}`;
       case 'commodity':
         return `/commodities?id=${result.id}`;
-      case 'bank':
-        return `/bank-products?bank=${result.id}`;
       case 'news':
         return `/news/${result.id}`;
       default:
@@ -140,7 +134,6 @@ export default function SearchPage() {
   const totalResults =
     (results?.stocks.length || 0) +
     (results?.commodities.length || 0) +
-    (results?.banks.length || 0) +
     (results?.news.length || 0);
 
   const getFilteredResults = () => {
@@ -151,8 +144,6 @@ export default function SearchPage() {
         return results.stocks;
       case 'commodities':
         return results.commodities;
-      case 'banks':
-        return results.banks;
       case 'news':
         return results.news;
       case 'ai':
@@ -161,7 +152,6 @@ export default function SearchPage() {
         return [
           ...results.stocks,
           ...results.commodities,
-          ...results.banks,
           ...results.news,
         ];
     }
@@ -172,7 +162,7 @@ export default function SearchPage() {
       <div>
         <h1 className="text-3xl font-bold mb-2">Search</h1>
         <p className="text-muted-foreground">
-          Find stocks, commodities, banks, and news
+          Find stocks, commodities, and news
         </p>
       </div>
 
@@ -182,7 +172,7 @@ export default function SearchPage() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-5 w-5 text-muted-foreground" />
             <Input
-              placeholder="Search for stocks, commodities, banks, or news..."
+              placeholder="Search for stocks, commodities, or news..."
               value={query}
               onChange={(e) => setQuery(e.target.value)}
               className="pl-10 h-12 text-lg"
@@ -222,9 +212,6 @@ export default function SearchPage() {
               </TabsTrigger>
               <TabsTrigger value="commodities">
                 Commodities ({results?.commodities.length || 0})
-              </TabsTrigger>
-              <TabsTrigger value="banks">
-                Banks ({results?.banks.length || 0})
               </TabsTrigger>
               <TabsTrigger value="news">
                 News ({results?.news.length || 0})
@@ -312,36 +299,6 @@ export default function SearchPage() {
                                             Rs. {commodity.current_price.toLocaleString()}
                                           </p>
                                         )}
-                                      </div>
-                                    </div>
-                                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
-                                  </CardContent>
-                                </Card>
-                              </Link>
-                            ))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Banks Section */}
-                      {results?.banks && results.banks.length > 0 && (
-                        <div className="space-y-2 mt-6">
-                          <h3 className="text-sm font-medium text-muted-foreground flex items-center gap-2">
-                            <Building2 className="h-4 w-4" />
-                            Banks
-                          </h3>
-                          <div className="grid gap-2 md:grid-cols-2">
-                            {results.banks.slice(0, 4).map((bank) => (
-                              <Link key={bank.id} href={getLink(bank)}>
-                                <Card className="hover:bg-muted/50 transition-colors cursor-pointer">
-                                  <CardContent className="p-4 flex items-center justify-between">
-                                    <div className="flex items-center gap-3">
-                                      <div className={cn('p-2 rounded-lg', typeColors.bank)}>
-                                        <Building2 className="h-4 w-4" />
-                                      </div>
-                                      <div>
-                                        <p className="font-bold">{bank.code}</p>
-                                        <p className="text-sm text-muted-foreground">{bank.name}</p>
                                       </div>
                                     </div>
                                     <ChevronRight className="h-4 w-4 text-muted-foreground" />
@@ -459,7 +416,6 @@ export default function SearchPage() {
                                 )}>
                                   {activeTab === 'stocks' && <TrendingUp className="h-4 w-4" />}
                                   {activeTab === 'commodities' && <Coins className="h-4 w-4" />}
-                                  {activeTab === 'banks' && <Building2 className="h-4 w-4" />}
                                   {activeTab === 'news' && <Newspaper className="h-4 w-4" />}
                                   {activeTab === 'ai' && <Sparkles className="h-4 w-4 text-purple-500" />}
                                 </div>

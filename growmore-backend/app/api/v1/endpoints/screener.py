@@ -52,15 +52,6 @@ class SaveScreenRequest(BaseModel):
     notifications_enabled: bool = False
 
 
-class ScreenerFilterResponse(BaseModel):
-    name: str
-    code: str
-    category: str
-    data_type: str
-    field_path: str
-    description: Optional[str] = None
-
-
 class StrategyResponse(BaseModel):
     name: str
     slug: str
@@ -72,44 +63,82 @@ class StrategyResponse(BaseModel):
 
 class StockResult(BaseModel):
     id: str
-    company_id: str
+    company_id: Optional[str] = None
     symbol: str
     name: str
+    logo_url: Optional[str] = None
     sector: Optional[str] = None
+    sector_name: Optional[str] = None
     sector_code: Optional[str] = None
+
+    # Price Data
     current_price: Optional[float] = None
     change_amount: Optional[float] = None
     change_percentage: Optional[float] = None
+    open_price: Optional[float] = None
+    high_price: Optional[float] = None
+    low_price: Optional[float] = None
+    previous_close: Optional[float] = None
     volume: Optional[int] = None
+    avg_volume: Optional[int] = None
+
+    # 52 Week
+    week_52_high: Optional[float] = None
+    week_52_low: Optional[float] = None
+
+    # Valuation
     market_cap: Optional[float] = None
     pe_ratio: Optional[float] = None
+    pb_ratio: Optional[float] = None
+    ps_ratio: Optional[float] = None
+    peg_ratio: Optional[float] = None
+    ev_ebitda: Optional[float] = None
+
+    # Per Share
     eps: Optional[float] = None
+    book_value: Optional[float] = None
+    dps: Optional[float] = None
     dividend_yield: Optional[float] = None
+
+    # Profitability
+    roe: Optional[float] = None
+    roa: Optional[float] = None
+    roce: Optional[float] = None
+    gross_margin: Optional[float] = None
+    operating_margin: Optional[float] = None
+    net_margin: Optional[float] = None
+    profit_margin: Optional[float] = None
+
+    # Leverage
+    debt_to_equity: Optional[float] = None
+    debt_to_assets: Optional[float] = None
+    current_ratio: Optional[float] = None
+    quick_ratio: Optional[float] = None
+    interest_coverage: Optional[float] = None
+
+    # Growth
+    revenue_growth: Optional[float] = None
+    earnings_growth: Optional[float] = None
+    profit_growth: Optional[float] = None
+
+    # Other
+    beta: Optional[float] = None
+    payout_ratio: Optional[float] = None
+    fcf_yield: Optional[float] = None
+
+    last_updated: Optional[str] = None
 
 
 class ScreenResultResponse(BaseModel):
     stocks: List[StockResult]
     count: int
+    total_count: Optional[int] = None
     filters_applied: Dict[str, Any]
     limit: int
     offset: int
 
 
 # Endpoints
-@router.get("/filters", response_model=List[ScreenerFilterResponse])
-async def get_screener_filters():
-    """Get all available screener filters."""
-    service = ScreenerService()
-    return service.get_filters()
-
-
-@router.get("/filters/categories")
-async def get_filter_categories():
-    """Get filter categories with their filters."""
-    service = ScreenerService()
-    return service.get_filter_categories()
-
-
 @router.get("/strategies", response_model=List[StrategyResponse])
 async def get_strategies(
     featured_only: bool = Query(False, description="Only return featured strategies"),
@@ -252,72 +281,3 @@ async def run_saved_screen(
         )
 
     return result
-
-
-# Quick access endpoints
-@router.get("/top-gainers", response_model=ScreenResultResponse)
-async def get_top_gainers(
-    limit: int = Query(20, le=50),
-    market_id: Optional[str] = None,
-):
-    """Get top gaining stocks today."""
-    service = ScreenerService()
-    return await service.run_screen(
-        filters={
-            "change_pct": {"min": 0},
-            "sort": "change_pct_desc",
-            "limit": limit,
-        },
-        market_id=market_id,
-    )
-
-
-@router.get("/top-losers", response_model=ScreenResultResponse)
-async def get_top_losers(
-    limit: int = Query(20, le=50),
-    market_id: Optional[str] = None,
-):
-    """Get top losing stocks today."""
-    service = ScreenerService()
-    return await service.run_screen(
-        filters={
-            "change_pct": {"max": 0},
-            "sort": "change_pct_asc",
-            "limit": limit,
-        },
-        market_id=market_id,
-    )
-
-
-@router.get("/most-active", response_model=ScreenResultResponse)
-async def get_most_active(
-    limit: int = Query(20, le=50),
-    market_id: Optional[str] = None,
-):
-    """Get most actively traded stocks today."""
-    service = ScreenerService()
-    return await service.run_screen(
-        filters={
-            "sort": "volume_desc",
-            "limit": limit,
-        },
-        market_id=market_id,
-    )
-
-
-@router.get("/high-dividend", response_model=ScreenResultResponse)
-async def get_high_dividend(
-    min_yield: float = Query(5.0, description="Minimum dividend yield"),
-    limit: int = Query(20, le=50),
-    market_id: Optional[str] = None,
-):
-    """Get high dividend yield stocks."""
-    service = ScreenerService()
-    return await service.run_screen(
-        filters={
-            "div_yield": {"min": min_yield},
-            "sort": "div_yield_desc",
-            "limit": limit,
-        },
-        market_id=market_id,
-    )

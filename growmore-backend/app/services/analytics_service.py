@@ -92,7 +92,7 @@ class AnalyticsService:
         total_current_value = Decimal("0")
         total_holdings = 0
 
-        asset_allocation = {"stock": Decimal("0"), "commodity": Decimal("0"), "bank_product": Decimal("0")}
+        asset_allocation = {"stock": Decimal("0"), "commodity": Decimal("0")}
 
         for portfolio in portfolios:
             total_invested += portfolio.total_invested

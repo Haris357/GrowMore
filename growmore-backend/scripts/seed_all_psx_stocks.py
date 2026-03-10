@@ -10,7 +10,8 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
 from app.db.supabase import get_supabase_service_client
-from app.scrapers.stocks.psx_scraper import PSXScraper, PSX_SECTOR_CODES
+from app.services.psx.dps_client import DPSPortalClient
+from app.services.psx.constants import PSX_SECTOR_CODES
 
 
 # Map PSX sector codes to our internal sector codes (based on actual PSX DPS codes)
@@ -164,16 +165,31 @@ async def seed_all_stocks():
     print(f"Market ID: {market_id}")
     print(f"Found {len(sectors)} sectors")
 
-    # Scrape all stocks from PSX
-    print("\nScraping PSX market watch...")
-    scraper = PSXScraper()
-    stocks = await scraper.scrape()
+    # Fetch all stocks from PSX via DPS market-watch
+    print("\nFetching PSX market watch...")
+    dps = DPSPortalClient()
+    market_rows = await dps.fetch_market_watch()
 
-    if not stocks:
-        print("ERROR: No stocks scraped from PSX. Check internet connection.")
+    if not market_rows:
+        print("ERROR: No stocks fetched from PSX. Check internet connection.")
         return
 
-    print(f"Scraped {len(stocks)} stocks from PSX")
+    # Convert MarketWatchRow to dict format for compatibility
+    stocks = []
+    for row in market_rows:
+        stocks.append({
+            "symbol": row.symbol,
+            "name": row.name,
+            "sector_code": row.sector_code,
+            "sector": row.sector_name,
+            "current_price": row.current_price,
+            "change_amount": row.change_amount,
+            "change_percentage": row.change_percentage,
+            "previous_close": row.previous_close,
+            "volume": row.volume,
+        })
+
+    print(f"Fetched {len(stocks)} stocks from PSX")
 
     # Get existing companies
     existing = client.table("companies").select("symbol").eq("market_id", market_id).execute()

@@ -4,7 +4,7 @@ from uuid import UUID
 
 from app.core.dependencies import get_db
 from app.services.market_service import MarketService
-from app.schemas.market import MarketResponse, SectorResponse, MarketWithSectorsResponse
+from app.schemas.market import MarketResponse, SectorResponse
 
 router = APIRouter()
 
@@ -30,11 +30,3 @@ async def get_market_sectors(market_id: UUID, db=Depends(get_db)):
     return [SectorResponse.model_validate(s.model_dump()) for s in sectors]
 
 
-@router.get("/{market_id}/details", response_model=MarketWithSectorsResponse)
-async def get_market_with_sectors(market_id: UUID, db=Depends(get_db)):
-    market_service = MarketService(db)
-    result = await market_service.get_market_with_sectors(market_id)
-    return MarketWithSectorsResponse(
-        **result["market"].model_dump(),
-        sectors=[SectorResponse.model_validate(s.model_dump()) for s in result["sectors"]],
-    )

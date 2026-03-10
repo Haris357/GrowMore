@@ -145,11 +145,6 @@ class StockHistoryListResponse(BaseModel):
     period: str
 
 
-class TopStockResponse(BaseModel):
-    stocks: List[StockResponse]
-    as_of: datetime
-
-
 # =====================================================
 # SCREENER SCHEMAS - Comprehensive Stock Screening
 # =====================================================

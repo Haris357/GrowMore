@@ -273,7 +273,6 @@ export default function PortfolioPage() {
                     <SelectContent>
                       <SelectItem value="stock">Stock</SelectItem>
                       <SelectItem value="commodity">Commodity</SelectItem>
-                      <SelectItem value="bank_product">Bank Product</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>

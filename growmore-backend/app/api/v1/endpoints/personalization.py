@@ -17,25 +17,6 @@ router = APIRouter()
 
 # ==================== Request/Response Models ====================
 
-class ProfileCreate(BaseModel):
-    risk_profile: str = Field(
-        default="moderate",
-        pattern="^(conservative|moderate|aggressive)$"
-    )
-    experience_level: str = Field(
-        default="beginner",
-        pattern="^(beginner|intermediate|advanced|expert)$"
-    )
-    investment_horizon: str = Field(
-        default="medium_term",
-        pattern="^(short_term|medium_term|long_term)$"
-    )
-    preferred_sectors: List[str] = Field(default=[])
-    preferred_asset_types: List[str] = Field(default=[])
-    monthly_investment_capacity: Optional[float] = Field(None, ge=0)
-    financial_goals: List[str] = Field(default=[])
-
-
 class ProfileUpdate(BaseModel):
     risk_profile: Optional[str] = Field(
         None,
@@ -89,38 +70,6 @@ async def get_profile(
     profile["risk_score"] = risk_score
 
     return {"profile": profile}
-
-
-@router.post("/profile", status_code=status.HTTP_201_CREATED)
-async def create_profile(
-    profile: ProfileCreate,
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Create a personalization profile.
-
-    This enables personalized recommendations based on:
-    - Risk tolerance (conservative, moderate, aggressive)
-    - Experience level
-    - Investment horizon
-    - Preferred sectors and asset types
-    """
-    service = PersonalizationService()
-
-    # Check if profile already exists
-    existing = await service.get_profile(current_user.firebase_uid)
-    if existing:
-        raise HTTPException(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            detail="Profile already exists. Use PUT to update.",
-        )
-
-    result = await service.create_profile(
-        user_id=current_user.firebase_uid,
-        data=profile.dict(),
-    )
-
-    return result
 
 
 @router.put("/profile")

@@ -188,7 +188,7 @@ class PortfolioService:
         portfolio_data = await self.get_portfolio_by_id(portfolio_id, user_id)
         holdings = portfolio_data.get("holdings", [])
 
-        asset_allocation = {"stock": Decimal("0"), "commodity": Decimal("0"), "bank_product": Decimal("0")}
+        asset_allocation = {"stock": Decimal("0"), "commodity": Decimal("0")}
         best_performer = None
         worst_performer = None
         best_pct = Decimal("-9999999")

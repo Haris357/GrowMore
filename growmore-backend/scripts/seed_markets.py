@@ -105,28 +105,6 @@ def seed_commodity_types():
             print(f"Commodity type already exists: {ct['name']}")
 
 
-def seed_bank_product_types():
-    client = get_supabase_service_client()
-
-    product_types = [
-        {"name": "Savings Account", "category": "savings", "description": "Regular savings account with interest"},
-        {"name": "Fixed Deposit", "category": "fixed_deposit", "description": "Term deposit with fixed interest rate"},
-        {"name": "Current Account", "category": "current", "description": "Checking account for daily transactions"},
-        {"name": "Term Deposit Certificate", "category": "certificate", "description": "Certificate of deposit"},
-        {"name": "Premium Savings", "category": "savings", "description": "High-yield savings account"},
-        {"name": "Islamic Savings", "category": "savings", "description": "Shariah-compliant savings account"},
-        {"name": "Islamic Term Deposit", "category": "fixed_deposit", "description": "Shariah-compliant term deposit"},
-    ]
-
-    for pt in product_types:
-        existing = client.table("bank_product_types").select("id").eq("name", pt["name"]).execute()
-        if not existing.data:
-            client.table("bank_product_types").insert(pt).execute()
-            print(f"Created bank product type: {pt['name']}")
-        else:
-            print(f"Bank product type already exists: {pt['name']}")
-
-
 def seed_news_sources():
     client = get_supabase_service_client()
 
@@ -290,9 +268,6 @@ def main():
 
     print("\nSeeding commodity types...")
     seed_commodity_types()
-
-    print("\nSeeding bank product types...")
-    seed_bank_product_types()
 
     print("\nSeeding news sources...")
     seed_news_sources()

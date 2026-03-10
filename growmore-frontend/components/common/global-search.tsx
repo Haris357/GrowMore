@@ -17,7 +17,6 @@ import {
   Search,
   TrendingUp,
   Newspaper,
-  Building2,
   Coins,
   Loader2,
   History,
@@ -30,7 +29,7 @@ import { cn } from '@/lib/utils';
 
 interface SearchResult {
   id: string;
-  type: 'stock' | 'commodity' | 'bank' | 'news';
+  type: 'stock' | 'commodity' | 'news';
   symbol?: string;
   name?: string;
   title?: string;
@@ -45,21 +44,18 @@ interface SearchResult {
 interface SearchResults {
   stocks: SearchResult[];
   commodities: SearchResult[];
-  banks: SearchResult[];
   news: SearchResult[];
 }
 
 const typeIcons: Record<string, React.ComponentType<{ className?: string }>> = {
   stock: TrendingUp,
   commodity: Coins,
-  bank: Building2,
   news: Newspaper,
 };
 
 const typeColors: Record<string, string> = {
   stock: 'bg-blue-500/10 text-blue-500',
   commodity: 'bg-yellow-500/10 text-yellow-500',
-  bank: 'bg-green-500/10 text-green-500',
   news: 'bg-purple-500/10 text-purple-500',
 };
 
@@ -113,7 +109,7 @@ export function GlobalSearch() {
               q: debouncedQuery,
               include_stocks: true,
               include_commodities: true,
-              include_banks: true,
+
               include_news: true,
               limit: 5,
             },
@@ -159,9 +155,6 @@ export function GlobalSearch() {
       case 'commodity':
         router.push(`/commodities?id=${result.id}`);
         break;
-      case 'bank':
-        router.push(`/bank-products?bank=${result.id}`);
-        break;
       case 'news':
         router.push(`/news/${result.id}`);
         break;
@@ -175,7 +168,6 @@ export function GlobalSearch() {
   const hasResults = results && (
     results.stocks.length > 0 ||
     results.commodities.length > 0 ||
-    results.banks.length > 0 ||
     results.news.length > 0 ||
     semanticResults.length > 0
   );
@@ -183,7 +175,6 @@ export function GlobalSearch() {
   const totalResults =
     (results?.stocks.length || 0) +
     (results?.commodities.length || 0) +
-    (results?.banks.length || 0) +
     (results?.news.length || 0);
 
   return (
@@ -202,7 +193,7 @@ export function GlobalSearch() {
 
       <CommandDialog open={open} onOpenChange={setOpen}>
         <CommandInput
-          placeholder="Search stocks, commodities, banks, news..."
+          placeholder="Search stocks, commodities, news..."
           value={query}
           onValueChange={setQuery}
         />
@@ -282,33 +273,6 @@ export function GlobalSearch() {
                             )}
                             <Badge variant="outline">Commodity</Badge>
                           </div>
-                        </div>
-                      </CommandItem>
-                    ))}
-                  </CommandGroup>
-                </>
-              )}
-
-              {/* Banks */}
-              {results?.banks && results.banks.length > 0 && (
-                <>
-                  <CommandSeparator />
-                  <CommandGroup heading="Banks">
-                    {results.banks.map((bank) => (
-                      <CommandItem
-                        key={bank.id}
-                        onSelect={() => handleSelect(bank)}
-                        className="cursor-pointer"
-                      >
-                        <div className={cn('p-1 rounded mr-2', typeColors.bank)}>
-                          <Building2 className="h-4 w-4" />
-                        </div>
-                        <div className="flex flex-1 items-center justify-between">
-                          <div>
-                            <span className="font-medium">{bank.code}</span>
-                            <span className="ml-2 text-muted-foreground">{bank.name}</span>
-                          </div>
-                          <Badge variant="outline">Bank</Badge>
                         </div>
                       </CommandItem>
                     ))}
@@ -427,7 +391,7 @@ export function SearchPage({ initialQuery }: { initialQuery?: string }) {
               q: debouncedQuery,
               include_stocks: true,
               include_commodities: true,
-              include_banks: true,
+
               include_news: true,
               limit: 20,
             },
@@ -460,9 +424,6 @@ export function SearchPage({ initialQuery }: { initialQuery?: string }) {
         break;
       case 'commodity':
         router.push(`/commodities?id=${result.id}`);
-        break;
-      case 'bank':
-        router.push(`/bank-products?bank=${result.id}`);
         break;
       case 'news':
         router.push(`/news/${result.id}`);

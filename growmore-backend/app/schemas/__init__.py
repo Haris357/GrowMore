@@ -21,12 +21,6 @@ from .commodity import (
     CommodityHistoryResponse,
     CommodityTypeResponse,
 )
-from .bank_product import (
-    BankResponse,
-    BankProductResponse,
-    BankProductDetailResponse,
-    BankProductListParams,
-)
 from .news import (
     NewsArticleResponse,
     NewsArticleDetailResponse,
@@ -78,10 +72,6 @@ __all__ = [
     "CommodityDetailResponse",
     "CommodityHistoryResponse",
     "CommodityTypeResponse",
-    "BankResponse",
-    "BankProductResponse",
-    "BankProductDetailResponse",
-    "BankProductListParams",
     "NewsArticleResponse",
     "NewsArticleDetailResponse",
     "NewsListParams",

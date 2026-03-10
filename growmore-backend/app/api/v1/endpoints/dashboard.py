@@ -38,45 +38,6 @@ async def get_dashboard_summary(
     return await service.get_dashboard_summary(current_user.firebase_uid)
 
 
-@router.get("/market")
-async def get_market_overview():
-    """
-    Get comprehensive market overview.
-
-    Includes:
-    - Market statistics (advancing/declining/unchanged)
-    - Top gainers and losers
-    - Most active stocks
-    - Sector performance
-    - Market indices
-    - Commodity prices
-    """
-    service = get_analytics_service()
-    return await service.get_comprehensive_market_overview()
-
-
-@router.get("/portfolio")
-async def get_portfolio_analytics(
-    portfolio_id: Optional[str] = Query(default=None),
-    current_user: User = Depends(get_current_user),
-):
-    """
-    Get detailed portfolio analytics.
-
-    Includes:
-    - Portfolio summary (value, invested, gain/loss)
-    - Asset allocation breakdown
-    - Sector breakdown
-    - Risk metrics
-    - Top and worst performers
-    """
-    service = get_analytics_service()
-    return await service.get_portfolio_analytics(
-        user_id=current_user.firebase_uid,
-        portfolio_id=portfolio_id,
-    )
-
-
 @router.get("/sectors")
 async def get_sector_analysis():
     """
@@ -124,12 +85,9 @@ async def get_market_indices():
 
 @router.get("/commodities")
 async def get_commodities():
-    """Get commodity prices (gold, silver, etc.)."""
-    db = get_supabase_service_client()
-    result = db.table("commodities").select("*").execute()
-    return {
-        "commodities": result.data or [],
-    }
+    """Get commodity prices (gold, silver)."""
+    from app.services.precious_metals_service import get_precious_metals_prices
+    return await get_precious_metals_prices()
 
 
 @router.get("/quick-stats")

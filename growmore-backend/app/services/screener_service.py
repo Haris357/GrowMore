@@ -428,28 +428,6 @@ class ScreenerService:
     def __init__(self):
         self.db = get_supabase_service_client()
 
-    def get_filters(self) -> List[Dict[str, Any]]:
-        """Get all available screener filters."""
-        return SCREENER_FILTERS
-
-    def get_filter_categories(self) -> List[Dict[str, Any]]:
-        """Get filter categories with their filters."""
-        categories = {}
-        for f in SCREENER_FILTERS:
-            cat = f["category"]
-            if cat not in categories:
-                categories[cat] = {
-                    "code": cat,
-                    "name": cat.replace("_", " ").title(),
-                    "filters": [],
-                }
-            categories[cat]["filters"].append({
-                "code": f["code"],
-                "name": f["name"],
-                "description": f.get("description"),
-            })
-        return list(categories.values())
-
     def get_strategies(self, featured_only: bool = False, category: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get pre-built screening strategies."""
         strategies = PRESET_STRATEGIES
@@ -481,9 +459,10 @@ class ScreenerService:
         Run a stock screen with given filters.
         """
         try:
-            # Start with base query - select all fields
+            # Start with base query - select all fields with exact count
             query = self.db.table("stocks").select(
-                "*, companies!inner(id, symbol, name, logo_url, sector_id, market_id, sectors(id, name, code))"
+                "*, companies!inner(id, symbol, name, logo_url, sector_id, market_id, sectors(id, name, code))",
+                count="exact",
             )
 
             # Apply market filter
@@ -508,6 +487,7 @@ class ScreenerService:
             # Execute query
             result = query.execute()
             stocks = result.data or []
+            total_count = result.count if result.count is not None else len(stocks)
 
             # Format results
             formatted_stocks = []
@@ -522,6 +502,7 @@ class ScreenerService:
                     "name": company.get("name"),
                     "logo_url": company.get("logo_url"),
                     "sector": sector.get("name") if sector else None,
+                    "sector_name": sector.get("name") if sector else None,
                     "sector_code": sector.get("code") if sector else None,
 
                     # Price Data
@@ -585,6 +566,7 @@ class ScreenerService:
             return {
                 "stocks": formatted_stocks,
                 "count": len(formatted_stocks),
+                "total_count": total_count,
                 "filters_applied": filters,
                 "limit": result_limit,
                 "offset": offset,
@@ -613,6 +595,9 @@ class ScreenerService:
 
         if filter_code == "sector":
             return query.eq("companies.sector_id", filter_value)
+
+        if filter_code == "sector_name":
+            return query.eq("companies.sectors.name", filter_value)
 
         # Near 52-week high/low special filters
         if filter_code == "near_52_high" and filter_value:
@@ -694,18 +679,34 @@ class ScreenerService:
 
     def _get_sort_params(self, filters: Dict[str, Any]) -> tuple:
         """Get sort field and order from filters."""
-        sort = filters.get("sort", "change_pct_desc")
+        sort = filters.get("sort", "symbol_asc")
 
+        # NOTE: Supabase PostgREST does NOT support ordering by related table columns
+        # (e.g., "companies.symbol"). All sort fields must be on the primary (stocks) table.
         sort_map = {
+            # Default / Symbol — use company_id as proxy for deterministic ordering
+            "symbol_asc": ("company_id", "asc"),
+            "symbol_desc": ("company_id", "desc"),
+            "name_asc": ("company_id", "asc"),
+            "name_desc": ("company_id", "desc"),
+
             # Price
             "change_pct_desc": ("change_percentage", "desc"),
             "change_pct_asc": ("change_percentage", "asc"),
+            "change_percentage_desc": ("change_percentage", "desc"),
+            "change_percentage_asc": ("change_percentage", "asc"),
             "price_desc": ("current_price", "desc"),
             "price_asc": ("current_price", "asc"),
+            "current_price_desc": ("current_price", "desc"),
+            "current_price_asc": ("current_price", "asc"),
+            "change_amount_desc": ("change_amount", "desc"),
+            "change_amount_asc": ("change_amount", "asc"),
 
             # Trading
             "volume_desc": ("volume", "desc"),
             "volume_asc": ("volume", "asc"),
+            "avg_volume_desc": ("avg_volume", "desc"),
+            "avg_volume_asc": ("avg_volume", "asc"),
 
             # Valuation
             "market_cap_desc": ("market_cap", "desc"),
@@ -715,7 +716,13 @@ class ScreenerService:
             "pb_ratio_asc": ("pb_ratio", "asc"),
             "pb_ratio_desc": ("pb_ratio", "desc"),
 
-            # Dividends
+            # Per Share
+            "eps_desc": ("eps", "desc"),
+            "eps_asc": ("eps", "asc"),
+            "dividend_yield_desc": ("dividend_yield", "desc"),
+            "dividend_yield_asc": ("dividend_yield", "asc"),
+
+            # Dividends (alias)
             "div_yield_desc": ("dividend_yield", "desc"),
             "div_yield_asc": ("dividend_yield", "asc"),
 
@@ -733,7 +740,7 @@ class ScreenerService:
             "earnings_growth_desc": ("earnings_growth", "desc"),
         }
 
-        return sort_map.get(sort, ("change_percentage", "desc"))
+        return sort_map.get(sort, ("company_id", "asc"))
 
     async def run_strategy(self, slug: str, market_id: Optional[str] = None) -> Dict[str, Any]:
         """Run a pre-built strategy."""

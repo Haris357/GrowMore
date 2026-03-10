@@ -1,8 +1,9 @@
 """
-Shared constants for PSX scrapers.
+PSX constants — sector codes, company websites, sector name mappings.
+Migrated from app/scrapers/stocks/psx_constants.py with PSX Terminal additions.
 """
 
-# PSX Sector code to name mapping (actual PSX DPS codes from market-watch)
+# PSX DPS sector code to name mapping (from market-watch HTML)
 PSX_SECTOR_CODES = {
     "0801": "Automobile Assembler",
     "0802": "Automobile Parts & Accessories",
@@ -42,6 +43,47 @@ PSX_SECTOR_CODES = {
     "0836": "Real Estate Investment Trust",
     "0837": "Exchange Traded Funds",
     "0838": "Mutual Funds",
+}
+
+# PSX Terminal /api/stats/sectors uses these names — map to DPS sector codes
+PSX_TERMINAL_SECTOR_TO_CODE = {
+    "AUTO ASSEMBLER": "0801",
+    "AUTO PARTS": "0802",
+    "CABLE & ELEC": "0803",
+    "CEMENT": "0804",
+    "CHEMICAL": "0805",
+    "MUTUAL FUND": "0806",
+    "BANKS": "0807",
+    "ENGINEERING": "0808",
+    "FERTILIZER": "0809",
+    "FOOD & CARE": "0810",
+    "GLASS & CERAM": "0811",
+    "INSURANCE": "0812",
+    "INV BANKS": "0813",
+    "JUTE": "0814",
+    "LEASING": "0815",
+    "LEATHER": "0816",
+    "MISC": "0817",
+    "MODARABAS": "0818",
+    "PAPER & PACK": "0819",
+    "O&G EXPL": "0820",
+    "O&G MKT": "0821",
+    "PHARMA": "0822",
+    "POWER": "0823",
+    "REFINERY": "0825",
+    "SUGAR": "0826",
+    "SYNTHETIC": "0827",
+    "TECH & COMM": "0828",
+    "TEXTILE COMP": "0829",
+    "TEXTILE SPIN": "0830",
+    "TEXTILE WEAV": "0831",
+    "TOBACCO": "0832",
+    "TRANSPORT": "0833",
+    "VANASPATI": "0834",
+    "WOOLLEN": "0835",
+    "REAL ESTATE": "0836",
+    "ETFS": "0837",
+    "PROPERTY": "0836",
 }
 
 # Known company websites for logo fetching via Clearbit

@@ -24,12 +24,11 @@ def get_welcome_email(user_name: str, app_url: str = "https://growmore.pk") -> t
     <div class="highlight">
         <strong>Here's what you can do with GrowMore:</strong>
         <ul>
-            <li>📊 <strong>Track Investments</strong> - Stocks, Gold, Silver & Bank Products all in one place</li>
+            <li>📊 <strong>Track Investments</strong> - Stocks, Gold & Silver all in one place</li>
             <li>📰 <strong>AI-Powered News</strong> - Get insights via our GrowNews Network</li>
             <li>🎯 <strong>Set Goals</strong> - Create investment goals and track your progress</li>
             <li>🔔 <strong>Price Alerts</strong> - Get notified when stocks hit your target price</li>
             <li>📈 <strong>Stock Screener</strong> - Find opportunities with our powerful filters</li>
-            <li>🧮 <strong>Calculators</strong> - Plan your investments with precision</li>
         </ul>
     </div>
 

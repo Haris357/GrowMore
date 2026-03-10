@@ -1,4 +1,4 @@
-HOLDING_TYPES = ["stock", "commodity", "bank_product"]
+HOLDING_TYPES = ["stock", "commodity"]
 
 TRANSACTION_TYPES = ["buy", "sell"]
 
@@ -41,14 +41,6 @@ GOLD_TYPES = [
     "Gold 18K",
 ]
 
-BANK_PRODUCT_CATEGORIES = [
-    "savings",
-    "fixed_deposit",
-    "current",
-    "certificate",
-    "investment",
-]
-
 PSX_SECTORS = [
     "Automobile Assembler",
     "Automobile Parts & Accessories",
@@ -85,24 +77,6 @@ PSX_SECTORS = [
     "Transport",
     "Vanaspati & Allied Industries",
     "Woollen",
-]
-
-PAKISTAN_BANKS = [
-    {"code": "HBL", "name": "Habib Bank Limited"},
-    {"code": "UBL", "name": "United Bank Limited"},
-    {"code": "MCB", "name": "MCB Bank Limited"},
-    {"code": "ABL", "name": "Allied Bank Limited"},
-    {"code": "NBP", "name": "National Bank of Pakistan"},
-    {"code": "BAFL", "name": "Bank Alfalah Limited"},
-    {"code": "MEBL", "name": "Meezan Bank Limited"},
-    {"code": "BAHL", "name": "Bank Al-Habib Limited"},
-    {"code": "FABL", "name": "Faysal Bank Limited"},
-    {"code": "AKBL", "name": "Askari Bank Limited"},
-    {"code": "JSBL", "name": "JS Bank Limited"},
-    {"code": "SNBL", "name": "Soneri Bank Limited"},
-    {"code": "BOK", "name": "Bank of Khyber"},
-    {"code": "BOP", "name": "Bank of Punjab"},
-    {"code": "SCB", "name": "Standard Chartered Bank Pakistan"},
 ]
 
 TIME_PERIODS = {
