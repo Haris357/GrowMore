@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -78,8 +78,19 @@ export default function StocksPage() {
   // Sort state
   const [sortBy, setSortBy] = useState<string>('symbol');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [debouncedSearch, setDebouncedSearch] = useState('');
+  const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   const visibleColumns = columns.filter((col) => col.visible);
+
+  const handleSearchChange = (value: string) => {
+    setSearchTerm(value);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    searchDebounceRef.current = setTimeout(() => {
+      setDebouncedSearch(value);
+      setCurrentPage(1);
+    }, 400);
+  };
 
   const fetchStocks = useCallback(async (page: number, size: number) => {
     try {
@@ -90,6 +101,11 @@ export default function StocksPage() {
 
       // Add sort
       backendFilters.sort = `${sortBy}_${sortOrder}`;
+
+      // Add server-side search across all stocks
+      if (debouncedSearch.trim()) {
+        backendFilters.search = debouncedSearch.trim();
+      }
 
       const offset = (page - 1) * size;
 
@@ -122,22 +138,13 @@ export default function StocksPage() {
     } finally {
       setIsLoading(false);
     }
-  }, [filters, sortBy, sortOrder]);
+  }, [filters, sortBy, sortOrder, debouncedSearch]);
 
   useEffect(() => {
     fetchStocks(1, pageSize);
   }, [fetchStocks, pageSize]);
 
-  // Client-side search within current page (filters & sorting are server-side)
-  const processedStocks = searchTerm
-    ? stocks.filter((stock) => {
-        const term = searchTerm.toLowerCase();
-        return (
-          (stock.symbol || '').toLowerCase().includes(term) ||
-          (stock.name || stock.company_name || '').toLowerCase().includes(term)
-        );
-      })
-    : stocks;
+  const processedStocks = stocks;
 
   const handleSort = (key: string) => {
     if (sortBy === key) {
@@ -266,7 +273,7 @@ export default function StocksPage() {
             <Input
               placeholder="Search stocks..."
               value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
+              onChange={(e) => handleSearchChange(e.target.value)}
               className="pl-9"
             />
           </div>

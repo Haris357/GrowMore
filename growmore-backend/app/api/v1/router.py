@@ -22,6 +22,8 @@ from app.api.v1.endpoints import (
     security,
     exports,
     health,
+    # Crypto
+    crypto,
     # Admin
     admin,
 )
@@ -52,6 +54,9 @@ api_router.include_router(newsletter.router, prefix="/newsletter", tags=["Newsle
 api_router.include_router(security.router, prefix="/security", tags=["Security"])
 api_router.include_router(exports.router, prefix="/exports", tags=["Exports"])
 api_router.include_router(health.router, tags=["Health & Monitoring"])
+
+# Crypto Market
+api_router.include_router(crypto.router, prefix="/crypto", tags=["Crypto Market"])
 
 # Admin endpoints for system management
 api_router.include_router(admin.router, prefix="/admin", tags=["Admin"])

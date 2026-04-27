@@ -2,7 +2,7 @@
 Supabase data writer — all database write operations for PSX data.
 
 Writes to: companies, stocks, stock_history, financial_statements tables.
-Uses a warm symbol cache to avoid N+2 DB lookups per symbol.
+Uses a warm symbol cache to avoid N+1 DB lookups per symbol.
 """
 import logging
 from datetime import date, datetime
@@ -12,6 +12,8 @@ from app.db.supabase import get_supabase_service_client
 from .dps_client import FinancialPeriod
 
 logger = logging.getLogger(__name__)
+
+BATCH_SIZE = 500  # Max rows per Supabase request
 
 
 class PSXDataWriter:
@@ -23,17 +25,15 @@ class PSXDataWriter:
     def warm_symbol_cache(self):
         """Pre-load all symbol → (company_id, stock_id) mappings. Call once at startup."""
         try:
-            companies = self.db.table("companies").select("id, symbol").execute()
-            for company in (companies.data or []):
+            # Single query: join stocks with companies to get symbol+ids in one round-trip
+            stocks = self.db.table("stocks").select("id, company_id, companies(symbol)").execute()
+            for row in (stocks.data or []):
+                company = row.get("companies") or {}
                 symbol = company.get("symbol")
-                company_id = company.get("id")
-                if not symbol or not company_id:
-                    continue
-                stock_result = self.db.table("stocks").select("id").eq(
-                    "company_id", company_id
-                ).limit(1).execute()
-                if stock_result.data:
-                    self._symbol_cache[symbol] = (company_id, stock_result.data[0]["id"])
+                company_id = row.get("company_id")
+                stock_id = row.get("id")
+                if symbol and company_id and stock_id:
+                    self._symbol_cache[symbol] = (company_id, stock_id)
             self._warmed = True
             logger.info(f"Symbol cache warmed: {len(self._symbol_cache)} symbols")
         except Exception as e:
@@ -43,8 +43,10 @@ class PSXDataWriter:
         """Get (company_id, stock_id) for a symbol from cache."""
         return self._symbol_cache.get(symbol)
 
+    # ─── Single-row writes (used outside sync loops) ───────────────────────────
+
     def update_stock_price(self, symbol: str, price_data: dict) -> bool:
-        """Update stocks table with price data."""
+        """Update stocks table with price data for a single symbol."""
         ids = self.get_ids(symbol)
         if not ids:
             return False
@@ -57,7 +59,7 @@ class PSXDataWriter:
             return False
 
     def upsert_stock_history(self, symbol: str, date_val: date, history_data: dict) -> bool:
-        """Upsert a stock_history row."""
+        """Upsert a single stock_history row."""
         ids = self.get_ids(symbol)
         if not ids:
             return False
@@ -81,13 +83,7 @@ class PSXDataWriter:
         try:
             update = {**company_data}
             if logo_url:
-                # Only update logo if current one is placeholder
-                current = self.db.table("companies").select("logo_url").eq(
-                    "id", company_id
-                ).execute()
-                current_logo = current.data[0].get("logo_url", "") if current.data else ""
-                if not current_logo or "ui-avatars" in current_logo or "placeholder" in current_logo:
-                    update["logo_url"] = logo_url
+                update["logo_url"] = logo_url
             if update:
                 self.db.table("companies").update(update).eq("id", company_id).execute()
                 return True
@@ -97,7 +93,7 @@ class PSXDataWriter:
             return False
 
     def update_company_name(self, symbol: str, name: str) -> bool:
-        """Update company name if we have a better one."""
+        """Update a single company name."""
         if not name or name == symbol:
             return False
         ids = self.get_ids(symbol)
@@ -126,9 +122,61 @@ class PSXDataWriter:
             logger.debug(f"Error updating fundamentals for {symbol}: {e}")
             return False
 
+    # ─── Batch writes (used in sync loops) ─────────────────────────────────────
+
+    def batch_update_stock_prices(self, rows: List[dict]) -> int:
+        """
+        Batch upsert stock prices. Each row must include 'id' (stock_id).
+        Returns count of rows processed.
+        """
+        if not rows:
+            return 0
+        count = 0
+        for i in range(0, len(rows), BATCH_SIZE):
+            batch = rows[i:i + BATCH_SIZE]
+            try:
+                self.db.table("stocks").upsert(batch, on_conflict="id").execute()
+                count += len(batch)
+            except Exception as e:
+                logger.error(f"Error batch updating stock prices (chunk {i}): {e}")
+        return count
+
+    def batch_upsert_stock_history(self, rows: List[dict]) -> int:
+        """
+        Batch upsert stock history. Each row must include 'stock_id' and 'date'.
+        Returns count of rows processed.
+        """
+        if not rows:
+            return 0
+        count = 0
+        for i in range(0, len(rows), BATCH_SIZE):
+            batch = rows[i:i + BATCH_SIZE]
+            try:
+                self.db.table("stock_history").upsert(
+                    batch, on_conflict="stock_id,date"
+                ).execute()
+                count += len(batch)
+            except Exception as e:
+                logger.error(f"Error batch upserting stock history (chunk {i}): {e}")
+        return count
+
+    def batch_update_company_names(self, rows: List[dict]) -> None:
+        """
+        Batch update company names. Each row must include 'id' and 'name'.
+        """
+        if not rows:
+            return
+        for i in range(0, len(rows), BATCH_SIZE):
+            batch = rows[i:i + BATCH_SIZE]
+            try:
+                self.db.table("companies").upsert(batch, on_conflict="id").execute()
+            except Exception as e:
+                logger.error(f"Error batch updating company names (chunk {i}): {e}")
+
+    # ─── Financial statements ───────────────────────────────────────────────────
+
     def save_financial_statements(self, company_id: str, financials: List[FinancialPeriod]) -> int:
-        """Upsert financial statements. Returns count saved."""
-        saved = 0
+        """Batch upsert financial statements. Returns count saved."""
         fin_fields = [
             "revenue", "cost_of_revenue", "gross_profit", "operating_expenses",
             "operating_income", "ebitda", "interest_expense", "net_income", "eps",
@@ -138,50 +186,46 @@ class PSXDataWriter:
             "financing_cash_flow", "net_cash_change", "free_cash_flow",
         ]
 
+        rows = []
         for fp in financials:
-            try:
-                if not fp.fiscal_year:
-                    continue
+            if not fp.fiscal_year:
+                continue
+            row = {
+                "company_id": company_id,
+                "period_type": fp.period_type,
+                "fiscal_year": fp.fiscal_year,
+                "quarter": fp.quarter,
+            }
+            for field_name in fin_fields:
+                val = getattr(fp, field_name, None)
+                if val is not None:
+                    try:
+                        row[field_name] = float(val)
+                    except (ValueError, TypeError):
+                        pass
+            rows.append(row)
 
-                row = {
-                    "company_id": company_id,
-                    "period_type": fp.period_type,
-                    "fiscal_year": fp.fiscal_year,
-                    "quarter": fp.quarter,
-                }
+        if not rows:
+            return 0
 
-                for field_name in fin_fields:
-                    val = getattr(fp, field_name, None)
-                    if val is not None:
-                        try:
-                            row[field_name] = float(val)
-                        except (ValueError, TypeError):
-                            pass
+        # Try batch upsert using the unique constraint columns
+        try:
+            self.db.table("financial_statements").upsert(
+                rows, on_conflict="company_id,period_type,fiscal_year,quarter"
+            ).execute()
+            return len(rows)
+        except Exception:
+            # Fallback: individual upserts (handles NULL quarter edge case)
+            saved = 0
+            for row in rows:
+                try:
+                    self.db.table("financial_statements").upsert(row).execute()
+                    saved += 1
+                except Exception as e:
+                    logger.debug(f"Error saving financial FY{row.get('fiscal_year')}: {e}")
+            return saved
 
-                # Check existing
-                query = self.db.table("financial_statements").select("id").eq(
-                    "company_id", company_id
-                ).eq("period_type", fp.period_type).eq("fiscal_year", fp.fiscal_year)
-
-                if fp.quarter:
-                    query = query.eq("quarter", fp.quarter)
-                else:
-                    query = query.is_("quarter", "null")
-
-                existing = query.execute()
-
-                if existing.data:
-                    self.db.table("financial_statements").update(row).eq(
-                        "id", existing.data[0]["id"]
-                    ).execute()
-                else:
-                    self.db.table("financial_statements").insert(row).execute()
-
-                saved += 1
-            except Exception as e:
-                logger.debug(f"Error saving financial FY{fp.fiscal_year}: {e}")
-
-        return saved
+    # ─── Company/stock creation ─────────────────────────────────────────────────
 
     def ensure_company_exists(
         self, symbol: str, name: str, sector_code: Optional[str] = None
@@ -191,16 +235,13 @@ class PSXDataWriter:
             return self._symbol_cache[symbol][0]
 
         try:
-            # Check if company already exists
             existing = self.db.table("companies").select("id").eq("symbol", symbol).execute()
             if existing.data:
                 company_id = existing.data[0]["id"]
-                # Check stock
-                stock = self.db.table("stocks").select("id").eq("company_id", company_id).execute()
+                stock = self.db.table("stocks").select("id").eq("company_id", company_id).limit(1).execute()
                 if stock.data:
                     self._symbol_cache[symbol] = (company_id, stock.data[0]["id"])
                     return company_id
-                # Create stock row
                 stock_row = self.db.table("stocks").insert({
                     "company_id": company_id,
                     "current_price": 0,
@@ -210,22 +251,16 @@ class PSXDataWriter:
                     self._symbol_cache[symbol] = (company_id, stock_row.data[0]["id"])
                 return company_id
 
-            # Look up sector_id
             sector_id = None
             if sector_code:
                 sector_result = self.db.table("sectors").select("id").eq("code", sector_code).execute()
                 if sector_result.data:
                     sector_id = sector_result.data[0]["id"]
 
-            # Look up market_id (PSX)
             market_result = self.db.table("markets").select("id").limit(1).execute()
             market_id = market_result.data[0]["id"] if market_result.data else None
 
-            company_insert = {
-                "symbol": symbol,
-                "name": name or symbol,
-                "is_active": True,
-            }
+            company_insert = {"symbol": symbol, "name": name or symbol, "is_active": True}
             if sector_id:
                 company_insert["sector_id"] = sector_id
             if market_id:
@@ -236,7 +271,6 @@ class PSXDataWriter:
                 return None
 
             company_id = company_result.data[0]["id"]
-
             stock_result = self.db.table("stocks").insert({
                 "company_id": company_id,
                 "current_price": 0,

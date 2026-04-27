@@ -20,7 +20,7 @@ class LoggingMiddleware(BaseHTTPMiddleware):
         super().__init__(app)
         self.log_request_body = log_request_body
         self.log_response_body = log_response_body
-        # Paths to skip logging
+        # Paths to skip logging entirely
         self.skip_paths = {
             "/health",
             "/healthz",
@@ -30,11 +30,23 @@ class LoggingMiddleware(BaseHTTPMiddleware):
             "/redoc",
             "/openapi.json",
         }
+        # Path prefixes where GET requests are skipped (high-frequency reads)
+        self.skip_get_prefixes = (
+            "/api/v1/news",
+            "/api/v1/crypto",
+            "/api/v1/dashboard",
+            "/api/v1/stocks",
+            "/api/v1/commodities",
+        )
 
     async def dispatch(self, request: Request, call_next: Callable) -> Response:
         """Process request and log details."""
         # Skip certain paths
         if request.url.path in self.skip_paths:
+            return await call_next(request)
+
+        # Skip GET requests on high-frequency read endpoints
+        if request.method == "GET" and request.url.path.startswith(self.skip_get_prefixes):
             return await call_next(request)
 
         start_time = time.time()

@@ -4,6 +4,7 @@ from uuid import UUID
 
 from app.core.dependencies import get_db
 from app.services.stock_service import StockService
+from app.services.stock_ai_analysis_service import get_stock_ai_analysis
 from app.schemas.stock import (
     StockResponse,
     StockDetailResponse,
@@ -171,3 +172,13 @@ async def get_stock_ratings(
     """Get computed ratings/metrics for a stock with Good/Bad indicators."""
     stock_service = StockService(db)
     return await stock_service.get_ratings(stock_id)
+
+
+@router.get("/{stock_id}/ai-analysis")
+async def get_stock_ai_analysis_endpoint(stock_id: UUID):
+    """
+    Get AI-powered comprehensive analysis for a stock.
+    Returns verdict, score, fundamental + technical signals, social sentiment, thesis, risks.
+    Cached per stock for 6 hours.
+    """
+    return await get_stock_ai_analysis(stock_id)

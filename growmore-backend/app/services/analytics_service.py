@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta
 from decimal import Decimal
 from typing import Any, Dict, List, Optional
@@ -153,11 +154,30 @@ class AnalyticsService:
     async def get_comprehensive_market_overview(self) -> Dict[str, Any]:
         """Get comprehensive market overview for dashboard."""
         try:
-            # Market stats
+            # Market stats — join companies for symbol/name/sector
             stocks_result = self.db.table("stocks").select(
-                "symbol,name,current_price,change_amount,change_percentage,volume,sector"
+                "current_price,change_amount,change_percentage,volume,"
+                "companies!inner(symbol,name,logo_url,sectors(name))"
             ).execute()
-            stocks = stocks_result.data or []
+
+            # Flatten join into a uniform shape
+            stocks = []
+            for row in (stocks_result.data or []):
+                company = row.get("companies") or {}
+                symbol = company.get("symbol")
+                if not symbol:
+                    continue
+                sector_obj = company.get("sectors") or {}
+                stocks.append({
+                    "symbol": symbol,
+                    "name": company.get("name") or symbol,
+                    "logo_url": company.get("logo_url"),
+                    "sector_name": (sector_obj.get("name") if isinstance(sector_obj, dict) else None),
+                    "current_price": row.get("current_price"),
+                    "change_amount": row.get("change_amount"),
+                    "change_percentage": row.get("change_percentage"),
+                    "volume": row.get("volume"),
+                })
 
             advancing = sum(1 for s in stocks if float(s.get("change_percentage", 0) or 0) > 0)
             declining = sum(1 for s in stocks if float(s.get("change_percentage", 0) or 0) < 0)
@@ -169,18 +189,25 @@ class AnalyticsService:
                 for s in stocks
             )
 
-            # Top movers
-            sorted_by_change = sorted(stocks, key=lambda x: float(x.get("change_percentage", 0) or 0), reverse=True)
-            top_gainers = sorted_by_change[:5]
-            top_losers = sorted_by_change[-5:][::-1]
+            # Top movers — exclude stocks with no price movement at all
+            with_change = [s for s in stocks if s.get("change_percentage") is not None]
+            sorted_by_change = sorted(with_change, key=lambda x: float(x.get("change_percentage") or 0), reverse=True)
+            top_gainers = [s for s in sorted_by_change if float(s.get("change_percentage") or 0) > 0][:5]
+            top_losers = [s for s in sorted_by_change if float(s.get("change_percentage") or 0) < 0][-5:][::-1]
 
-            # Most active
-            most_active = sorted(stocks, key=lambda x: int(x.get("volume", 0) or 0), reverse=True)[:5]
+            # Most active — must have positive volume
+            most_active = sorted(
+                [s for s in stocks if int(s.get("volume", 0) or 0) > 0],
+                key=lambda x: int(x.get("volume", 0) or 0),
+                reverse=True,
+            )[:5]
 
-            # Sector performance
+            # Sector performance — group by sector_name; skip stocks with no sector
             sector_data = defaultdict(list)
             for stock in stocks:
-                sector = stock.get("sector", "Other") or "Other"
+                sector = (stock.get("sector_name") or "").strip()
+                if not sector:
+                    continue
                 change = float(stock.get("change_percentage", 0) or 0)
                 sector_data[sector].append(change)
 
@@ -368,47 +395,53 @@ class AnalyticsService:
             return {"error": str(e)}
 
     async def get_dashboard_summary(self, user_id: str) -> Dict[str, Any]:
-        """Get complete dashboard summary for a user."""
-        try:
-            # Portfolio summary
-            portfolio = await self.get_portfolio_analytics(user_id)
+        """Get complete dashboard summary. Resilient — one failed sub-call won't 500 the page."""
+        from app.services.goals_service import GoalsService
+        from app.services.notification_service import NotificationService
+        goals_service = GoalsService()
+        notif_service = NotificationService()
 
-            # Market overview (condensed)
-            market = await self.get_comprehensive_market_overview()
+        results = await asyncio.gather(
+            self.get_portfolio_analytics(user_id),
+            self.get_comprehensive_market_overview(),
+            goals_service.get_goals_summary(user_id),
+            notif_service.get_unread_count(user_id),
+            notif_service.get_user_alerts(user_id, active_only=True),
+            return_exceptions=True,
+        )
 
-            # Goals summary
-            from app.services.goals_service import GoalsService
-            goals_service = GoalsService()
-            goals = await goals_service.get_goals_summary(user_id)
+        def safe(idx, default):
+            v = results[idx]
+            return default if isinstance(v, Exception) else (v or default)
 
-            # Recent notifications count
-            from app.services.notification_service import NotificationService
-            notif_service = NotificationService()
-            unread_count = await notif_service.get_unread_count(user_id)
-            alerts = await notif_service.get_user_alerts(user_id, active_only=True)
+        portfolio = safe(0, {})
+        market = safe(1, {})
+        goals = safe(2, {})
+        unread_count = safe(3, 0)
+        alerts = safe(4, [])
 
-            return {
-                "portfolio": {
-                    "total_value": portfolio.get("summary", {}).get("total_value", 0),
-                    "total_gain_loss": portfolio.get("summary", {}).get("total_gain_loss", 0),
-                    "gain_loss_pct": portfolio.get("summary", {}).get("gain_loss_percentage", 0),
-                    "holdings_count": portfolio.get("summary", {}).get("holdings_count", 0),
-                },
-                "market": {
-                    "indices": market.get("indices", [])[:3],
-                    "breadth": market.get("market_stats", {}).get("market_breadth", "neutral"),
-                },
-                "goals": {
-                    "active": goals.get("active_goals", 0),
-                    "achieved": goals.get("achieved_goals", 0),
-                    "overall_progress": goals.get("overall_progress_percentage", 0),
-                },
-                "notifications": {
-                    "unread_count": unread_count,
-                    "active_alerts": len(alerts),
-                },
-                "timestamp": datetime.utcnow().isoformat(),
-            }
+        # Portfolio shape can be either {"summary": {...}} or empty
+        psum = (portfolio or {}).get("summary", {}) if isinstance(portfolio, dict) else {}
 
-        except Exception as e:
-            return {"error": str(e)}
+        return {
+            "portfolio": {
+                "total_value": psum.get("total_value", 0),
+                "total_gain_loss": psum.get("total_gain_loss", 0),
+                "gain_loss_pct": psum.get("gain_loss_percentage", 0),
+                "holdings_count": psum.get("holdings_count", 0),
+            },
+            "market": {
+                "indices": (market.get("indices", []) if isinstance(market, dict) else [])[:3],
+                "breadth": (market.get("market_stats", {}) if isinstance(market, dict) else {}).get("market_breadth", "neutral"),
+            },
+            "goals": {
+                "active": (goals or {}).get("active_goals", 0) if isinstance(goals, dict) else 0,
+                "achieved": (goals or {}).get("achieved_goals", 0) if isinstance(goals, dict) else 0,
+                "overall_progress": (goals or {}).get("overall_progress_percentage", 0) if isinstance(goals, dict) else 0,
+            },
+            "notifications": {
+                "unread_count": unread_count if isinstance(unread_count, int) else 0,
+                "active_alerts": len(alerts) if isinstance(alerts, list) else 0,
+            },
+            "timestamp": datetime.utcnow().isoformat(),
+        }

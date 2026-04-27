@@ -5,7 +5,7 @@ from fastapi import Depends, Header
 from app.core.security import extract_token_from_header, get_current_user_from_token
 from app.core.exceptions import AuthenticationError, NotFoundError
 from app.db.supabase import get_supabase_client
-from app.ai.groq_client import get_groq_client
+from app.ai.openai_client import get_openai_client
 from app.repositories.user_repository import UserRepository
 from app.models.user import User
 
@@ -14,8 +14,12 @@ async def get_db():
     return get_supabase_client()
 
 
-async def get_groq():
-    return get_groq_client()
+async def get_openai():
+    return get_openai_client()
+
+
+# Backwards-compat alias
+get_groq = get_openai
 
 
 async def get_current_user(

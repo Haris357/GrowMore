@@ -240,12 +240,12 @@ export default function GoalsPage() {
     setIsLoadingDetail(true);
     try {
       const [contribRes, projRes, progressRes] = await Promise.all([
-        api.get(`/goals/${goalId}/contributions`),
+        api.get(`/goals/${goalId}/contributions`).catch(() => ({ data: null })),
         api.post(`/goals/${goalId}/projection`, {}).catch(() => ({ data: null })),
         api.get(`/goals/${goalId}/progress`).catch(() => ({ data: null })),
       ]);
 
-      setContributions(contribRes.data?.contributions || []);
+      setContributions(contribRes?.data?.contributions || []);
       setProjection(projRes.data);
       // Progress data can be accessed through progressRes.data for detailed breakdown
       if (progressRes.data) {

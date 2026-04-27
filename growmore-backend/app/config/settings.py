@@ -23,11 +23,11 @@ class Settings(BaseSettings):
     firebase_private_key: str = Field(..., env="FIREBASE_PRIVATE_KEY")
     firebase_client_email: str = Field(..., env="FIREBASE_CLIENT_EMAIL")
 
-    groq_api_key: str = Field(..., env="GROQ_API_KEY")
-    groq_model: str = Field(default="llama-3.1-70b-versatile", env="GROQ_MODEL")
-    groq_embedding_model: str = Field(default="llama-3.1-8b-instant", env="GROQ_EMBEDDING_MODEL")
-
     openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
+    openai_model: str = Field(default="gpt-4.1-mini", env="OPENAI_MODEL")
+    coingecko_api_key: Optional[str] = Field(default=None, env="COINGECKO_API_KEY")
+    cryptopanic_api_key: Optional[str] = Field(default=None, env="CRYPTOPANIC_API_KEY")
+    newsapi_key: Optional[str] = Field(default=None, env="NEWSAPI_KEY")
     cors_origins: List[str] = Field(
         default=["http://localhost:3000", "http://localhost:5173"],
         env="CORS_ORIGINS",

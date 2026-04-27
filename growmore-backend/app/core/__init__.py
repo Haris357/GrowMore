@@ -1,5 +1,5 @@
 from .security import verify_firebase_token, get_current_user_from_token
-from .dependencies import get_current_user, get_db, get_groq
+from .dependencies import get_current_user, get_db, get_openai, get_groq
 from .exceptions import (
     GrowMoreException,
     AuthenticationError,
@@ -14,6 +14,7 @@ __all__ = [
     "get_current_user_from_token",
     "get_current_user",
     "get_db",
+    "get_openai",
     "get_groq",
     "GrowMoreException",
     "AuthenticationError",

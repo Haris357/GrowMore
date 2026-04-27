@@ -14,7 +14,7 @@ router = APIRouter()
 
 @router.post("/sync/{sync_type}")
 async def run_manual_sync(
-    sync_type: Literal["stocks", "stocks_full", "stocks_intraday", "stocks_history", "fundamentals", "financial_statements"],
+    sync_type: Literal["stocks", "stocks_full", "stocks_intraday", "stocks_history", "fundamentals", "financial_statements", "all"],
     background_tasks: BackgroundTasks,
 ):
     """
@@ -25,6 +25,7 @@ async def run_manual_sync(
     - stocks_history: Backfill 2 years of daily OHLCV history for all stocks
     - fundamentals: Alias for stocks_full
     - financial_statements: Alias for stocks_full
+    - all: Full sync + history backfill (runs everything)
     """
     from app.services.psx import PSXSyncService
 
@@ -35,6 +36,10 @@ async def run_manual_sync(
         elif sync_type in ("stocks_full", "fundamentals", "financial_statements"):
             await sync.sync_full()
         elif sync_type == "stocks_history":
+            await sync.sync_history_backfill()
+        elif sync_type == "all":
+            await sync.sync_full()
+            await sync.sync_history_backfill()
             await sync.sync_daily_prices()
 
     background_tasks.add_task(_run_sync)

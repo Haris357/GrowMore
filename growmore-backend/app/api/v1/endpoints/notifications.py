@@ -54,7 +54,7 @@ async def list_price_alerts(
     """
     service = NotificationService()
     alerts = await service.get_user_alerts(
-        user_id=current_user.firebase_uid,
+        user_id=str(current_user.id),
         active_only=active_only,
     )
     return {
@@ -82,7 +82,7 @@ async def create_price_alert(
     """
     service = NotificationService()
     result = await service.create_price_alert(
-        user_id=current_user.firebase_uid,
+        user_id=str(current_user.id),
         symbol=alert.symbol.upper(),
         condition=alert.condition,
         target_value=alert.target_value,
@@ -98,7 +98,7 @@ async def delete_price_alert(
 ):
     """Delete a price alert."""
     service = NotificationService()
-    success = await service.delete_alert(current_user.firebase_uid, alert_id)
+    success = await service.delete_alert(str(current_user.id), alert_id)
 
     if not success:
         raise HTTPException(
@@ -118,7 +118,7 @@ async def toggle_price_alert(
     """Enable or disable a price alert."""
     service = NotificationService()
     result = await service.toggle_alert(
-        user_id=current_user.firebase_uid,
+        user_id=str(current_user.id),
         alert_id=alert_id,
         is_active=is_active,
     )
@@ -158,12 +158,12 @@ async def list_notifications(
     """
     service = NotificationService()
     notifications = await service.get_notifications(
-        user_id=current_user.firebase_uid,
+        user_id=str(current_user.id),
         unread_only=unread_only,
         limit=limit,
     )
 
-    unread_count = await service.get_unread_count(current_user.firebase_uid)
+    unread_count = await service.get_unread_count(str(current_user.id))
 
     return {
         "notifications": notifications,
@@ -178,7 +178,7 @@ async def get_unread_count(
 ):
     """Get count of unread notifications."""
     service = NotificationService()
-    count = await service.get_unread_count(current_user.firebase_uid)
+    count = await service.get_unread_count(str(current_user.id))
     return {"unread_count": count}
 
 
@@ -190,7 +190,7 @@ async def mark_notifications_read(
     """Mark specific notifications as read."""
     service = NotificationService()
     count = await service.mark_as_read(
-        user_id=current_user.firebase_uid,
+        user_id=str(current_user.id),
         notification_ids=request.notification_ids,
     )
     return {"marked_count": count}
@@ -202,7 +202,7 @@ async def mark_all_notifications_read(
 ):
     """Mark all notifications as read."""
     service = NotificationService()
-    count = await service.mark_all_read(current_user.firebase_uid)
+    count = await service.mark_all_read(str(current_user.id))
     return {"marked_count": count}
 
 
@@ -214,7 +214,7 @@ async def delete_notification(
     """Delete a notification."""
     service = NotificationService()
     success = await service.delete_notification(
-        user_id=current_user.firebase_uid,
+        user_id=str(current_user.id),
         notification_id=notification_id,
     )
 
@@ -235,7 +235,7 @@ async def get_notification_preferences(
 ):
     """Get notification preferences."""
     service = NotificationService()
-    preferences = await service.get_preferences(current_user.firebase_uid)
+    preferences = await service.get_preferences(str(current_user.id))
     return {"preferences": preferences}
 
 
@@ -267,7 +267,7 @@ async def update_notification_preferences(
         )
 
     result = await service.update_preferences(
-        user_id=current_user.firebase_uid,
+        user_id=str(current_user.id),
         preferences=update_data,
     )
 

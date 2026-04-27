@@ -1,583 +1,838 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Badge } from '@/components/ui/badge';
-import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
-import { Separator } from '@/components/ui/separator';
-import { StatCardSkeleton, CardSkeleton } from '@/components/common/skeletons';
 import {
-  TrendingUp, TrendingDown, Minus, ExternalLink, Clock,
-  Globe, Sparkles, RefreshCw, Search, Newspaper,
-  ArrowUpRight, ArrowDownRight, AlertTriangle, Lightbulb,
-  LineChart, Coins, Bitcoin, BarChart3,
+  TrendingUp, TrendingDown, Minus, Sparkles, RefreshCw, Search, Newspaper,
+  LineChart, Coins, Bitcoin, BarChart3, ChevronDown, ChevronUp,
+  AlertCircle, MapPin, Globe, ChevronLeft, ChevronRight, Quote,
 } from 'lucide-react';
 import { api } from '@/lib/api';
-import { formatDistanceToNow } from 'date-fns';
-import type { NewsArticle, MarketBrief, MarketBriefSection } from '@/types/news';
+import { formatDistanceToNow, format } from 'date-fns';
+import type {
+  GrowNewsArticle, GrowNewsFeed, GrowNewsFeature,
+  GrowNewsBrief, GrowNewsSentiment,
+} from '@/types/news';
 
-type NewsCategory = 'all' | 'stocks' | 'commodities' | 'crypto' | 'global';
+// ─── Constants ────────────────────────────────────────────────────────────────
 
-const CATEGORIES: { value: NewsCategory; label: string; icon: React.ReactNode }[] = [
-  { value: 'all', label: 'All News', icon: <Globe className="h-4 w-4" /> },
-  { value: 'stocks', label: 'Stocks', icon: <LineChart className="h-4 w-4" /> },
-  { value: 'commodities', label: 'Gold & Silver', icon: <Coins className="h-4 w-4" /> },
-  { value: 'crypto', label: 'Crypto', icon: <Bitcoin className="h-4 w-4" /> },
-  { value: 'global', label: 'Global', icon: <BarChart3 className="h-4 w-4" /> },
+type Category = 'all' | 'pakistan' | 'stocks' | 'crypto' | 'commodities' | 'global';
+
+const CATEGORIES: { value: Category; label: string; icon: React.ReactNode }[] = [
+  { value: 'all',         label: 'Front Page',  icon: <Newspaper className="h-3.5 w-3.5" /> },
+  { value: 'pakistan',    label: 'Pakistan',    icon: <MapPin className="h-3.5 w-3.5" /> },
+  { value: 'stocks',      label: 'Markets',     icon: <LineChart className="h-3.5 w-3.5" /> },
+  { value: 'crypto',      label: 'Crypto',      icon: <Bitcoin className="h-3.5 w-3.5" /> },
+  { value: 'commodities', label: 'Commodities', icon: <Coins className="h-3.5 w-3.5" /> },
+  { value: 'global',      label: 'World',       icon: <BarChart3 className="h-3.5 w-3.5" /> },
 ];
 
-function formatDate(dateStr?: string) {
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function timeAgo(dateStr?: string) {
   if (!dateStr) return 'Recently';
-  try {
-    return formatDistanceToNow(new Date(dateStr), { addSuffix: true });
-  } catch {
-    return 'Recently';
-  }
+  try { return formatDistanceToNow(new Date(dateStr), { addSuffix: true }); }
+  catch { return 'Recently'; }
 }
 
-function getSentimentIcon(sentiment?: string) {
-  switch (sentiment) {
-    case 'positive': return <TrendingUp className="h-4 w-4 text-gain" />;
-    case 'negative': return <TrendingDown className="h-4 w-4 text-loss" />;
-    default: return <Minus className="h-4 w-4 text-muted-foreground" />;
-  }
+function articleSummary(a: GrowNewsArticle) {
+  return a.ai_summary || a.summary || a.description || '';
 }
 
-function getSentimentBadge(sentiment?: string) {
-  switch (sentiment) {
-    case 'positive':
-      return <Badge variant="secondary" className="text-gain bg-[hsl(var(--gain)/0.1)]">Bullish</Badge>;
-    case 'negative':
-      return <Badge variant="secondary" className="text-loss bg-[hsl(var(--loss)/0.1)]">Bearish</Badge>;
-    default:
-      return <Badge variant="secondary">Neutral</Badge>;
-  }
+function sentimentChip(s?: string) {
+  if (s === 'positive')
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-gain">
+        <TrendingUp className="h-3 w-3" /> Bullish
+      </span>
+    );
+  if (s === 'negative')
+    return (
+      <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-loss">
+        <TrendingDown className="h-3 w-3" /> Bearish
+      </span>
+    );
+  return (
+    <span className="inline-flex items-center gap-1 text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+      <Minus className="h-3 w-3" /> Neutral
+    </span>
+  );
 }
 
-function getImpactLevel(score?: number) {
-  if (!score) return null;
-  const s = Number(score);
-  if (s >= 7) return <Badge variant="outline" className="text-loss">High Impact</Badge>;
-  if (s >= 4) return <Badge variant="outline" className="text-[hsl(var(--warning))]">Medium</Badge>;
+function impactPill(impact?: string) {
+  if (impact === 'high')
+    return (
+      <span className="inline-flex items-center px-1.5 py-px rounded-sm bg-loss/10 text-loss text-[9px] font-bold uppercase tracking-wider border border-loss/30">
+        High Impact
+      </span>
+    );
+  if (impact === 'medium')
+    return (
+      <span className="inline-flex items-center px-1.5 py-px rounded-sm bg-yellow-500/10 text-yellow-600 dark:text-yellow-400 text-[9px] font-bold uppercase tracking-wider border border-yellow-500/30">
+        Medium
+      </span>
+    );
   return null;
 }
 
-function getMoodLabel(mood: string) {
-  switch (mood) {
-    case 'bullish': return { text: 'Bullish', className: 'text-gain' };
-    case 'bearish': return { text: 'Bearish', className: 'text-loss' };
-    case 'mixed': return { text: 'Mixed', className: 'text-[hsl(var(--warning))]' };
-    default: return { text: 'Neutral', className: 'text-muted-foreground' };
-  }
+// ─── Article Image ────────────────────────────────────────────────────────────
+
+function ArticleImage({ src, alt, className }: { src: string; alt: string; className?: string }) {
+  const [err, setErr] = useState(false);
+  if (err) return null;
+  return (
+    <img
+      src={src}
+      alt={alt}
+      className={className}
+      onError={() => setErr(true)}
+      loading="lazy"
+    />
+  );
 }
 
-function getSectionIcon(category: string) {
-  switch (category) {
-    case 'stocks': return <LineChart className="h-4 w-4" />;
-    case 'commodities': return <Coins className="h-4 w-4" />;
-    case 'crypto': return <Bitcoin className="h-4 w-4" />;
-    case 'global': return <Globe className="h-4 w-4" />;
-    default: return <BarChart3 className="h-4 w-4" />;
-  }
+// ─── Section Bar ──────────────────────────────────────────────────────────────
+
+function SectionBar({ label, accent }: { label: string; accent?: boolean }) {
+  return (
+    <div className="flex items-center gap-3 my-4">
+      <div className={`h-px flex-1 ${accent ? 'bg-primary' : 'bg-foreground/30'}`} />
+      <h2 className="text-[11px] font-black uppercase tracking-[0.25em] text-foreground whitespace-nowrap">
+        {label}
+      </h2>
+      <div className={`h-px flex-1 ${accent ? 'bg-primary' : 'bg-foreground/30'}`} />
+    </div>
+  );
 }
+
+// ─── Lead Story (Front Page Hero) ─────────────────────────────────────────────
+
+function LeadStory({ article }: { article: GrowNewsArticle }) {
+  const summary = articleSummary(article);
+  return (
+    <article className="border-y-2 border-foreground/80 py-5 md:py-6">
+      <div className="grid md:grid-cols-5 gap-5 md:gap-6">
+        {/* Image */}
+        {article.image_url && (
+          <a
+            href={article.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            className="md:col-span-3 block group relative overflow-hidden bg-muted aspect-[16/10]"
+          >
+            <ArticleImage
+              src={article.image_url}
+              alt={article.title}
+              className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.02] transition-transform duration-500"
+            />
+            <div className="absolute top-3 left-3 px-2 py-1 bg-background/95 backdrop-blur text-[9px] font-black uppercase tracking-widest border border-border">
+              Lead Story
+            </div>
+          </a>
+        )}
+
+        {/* Headline + body */}
+        <div className={article.image_url ? 'md:col-span-2 flex flex-col justify-center' : 'md:col-span-5'}>
+          <div className="flex items-center gap-2 mb-3 flex-wrap">
+            {sentimentChip(article.sentiment)}
+            {impactPill(article.impact)}
+            <span className="text-[10px] font-bold uppercase tracking-wider text-muted-foreground">
+              · {article.source_name}
+            </span>
+          </div>
+
+          <a href={article.url} target="_blank" rel="noopener noreferrer" className="group">
+            <h1 className="text-2xl md:text-4xl font-black leading-[1.05] tracking-tight mb-3 group-hover:text-primary transition-colors">
+              {article.title}
+            </h1>
+          </a>
+
+          {summary && (
+            <p className="text-sm md:text-base text-foreground/80 leading-relaxed line-clamp-4 first-letter:font-serif first-letter:text-3xl first-letter:font-bold first-letter:float-left first-letter:mr-1.5 first-letter:mt-0.5 first-letter:text-primary">
+              {summary}
+            </p>
+          )}
+
+          <div className="mt-4 pt-3 border-t border-border flex items-center justify-between">
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+              {timeAgo(article.published_at)}
+            </span>
+            <a
+              href={article.url}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-[10px] font-bold uppercase tracking-wider text-primary hover:underline"
+            >
+              Continue Reading →
+            </a>
+          </div>
+        </div>
+      </div>
+    </article>
+  );
+}
+
+// ─── Column Story (Featured 3-up) ─────────────────────────────────────────────
+
+function ColumnStory({ article }: { article: GrowNewsArticle }) {
+  return (
+    <article className="group">
+      <a href={article.url} target="_blank" rel="noopener noreferrer" className="block">
+        {article.image_url && (
+          <div className="relative w-full aspect-[16/10] overflow-hidden bg-muted mb-2.5">
+            <ArticleImage
+              src={article.image_url}
+              alt={article.title}
+              className="absolute inset-0 w-full h-full object-cover group-hover:scale-[1.03] transition-transform duration-400"
+            />
+          </div>
+        )}
+        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+          {sentimentChip(article.sentiment)}
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            · {article.source_name}
+          </span>
+        </div>
+        <h3 className="font-black text-base leading-snug tracking-tight line-clamp-3 group-hover:text-primary transition-colors">
+          {article.title}
+        </h3>
+        <p className="text-[11px] text-muted-foreground mt-1.5 uppercase tracking-wider font-medium">
+          {timeAgo(article.published_at)}
+        </p>
+      </a>
+    </article>
+  );
+}
+
+// ─── Article Row (List Items) ─────────────────────────────────────────────────
+
+function ArticleRow({ article }: { article: GrowNewsArticle }) {
+  const summary = articleSummary(article);
+  return (
+    <article className="grid grid-cols-[1fr_auto] gap-4 py-4 border-b border-border last:border-0 group">
+      <div className="min-w-0">
+        <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+          {sentimentChip(article.sentiment)}
+          {impactPill(article.impact)}
+          <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
+            · {article.source_name}
+          </span>
+        </div>
+        <a href={article.url} target="_blank" rel="noopener noreferrer">
+          <h3 className="font-bold text-base md:text-lg leading-snug tracking-tight line-clamp-2 group-hover:text-primary transition-colors mb-1">
+            {article.title}
+          </h3>
+        </a>
+        {summary && (
+          <p className="text-sm text-muted-foreground line-clamp-2 leading-relaxed">
+            {summary}
+          </p>
+        )}
+        <p className="text-[10px] mt-2 font-semibold uppercase tracking-wider text-muted-foreground/80">
+          {timeAgo(article.published_at)}
+        </p>
+      </div>
+
+      {article.image_url && (
+        <a
+          href={article.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="shrink-0 w-24 h-24 sm:w-32 sm:h-24 overflow-hidden bg-muted"
+        >
+          <ArticleImage
+            src={article.image_url}
+            alt={article.title}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          />
+        </a>
+      )}
+    </article>
+  );
+}
+
+// ─── Compact Brief Row (used in sidebar lists) ────────────────────────────────
+
+function BriefRow({ article, index }: { article: GrowNewsArticle; index: number }) {
+  return (
+    <a
+      href={article.url}
+      target="_blank"
+      rel="noopener noreferrer"
+      className="flex gap-3 py-3 border-b border-border last:border-0 group"
+    >
+      <span className="font-serif text-2xl font-black text-foreground/15 leading-none w-8 shrink-0 mt-0.5">
+        {String(index + 1).padStart(2, '0')}
+      </span>
+      <div className="min-w-0">
+        <p className="text-sm font-semibold leading-snug line-clamp-2 group-hover:text-primary transition-colors tracking-tight">
+          {article.title}
+        </p>
+        <p className="text-[10px] text-muted-foreground mt-1 font-semibold uppercase tracking-wider">
+          {article.source_name} · {timeAgo(article.published_at)}
+        </p>
+      </div>
+    </a>
+  );
+}
+
+// ─── Editor's Note (AI Brief) ─────────────────────────────────────────────────
+
+function EditorsNote({ brief }: { brief: GrowNewsBrief }) {
+  const [expanded, setExpanded] = useState(false);
+
+  const moodColor = brief.sentiment === 'bullish'
+    ? 'text-gain' : brief.sentiment === 'bearish'
+    ? 'text-loss' : 'text-muted-foreground';
+
+  const moodIcon = brief.sentiment === 'bullish'
+    ? <TrendingUp className="h-4 w-4" />
+    : brief.sentiment === 'bearish'
+    ? <TrendingDown className="h-4 w-4" />
+    : <Minus className="h-4 w-4" />;
+
+  return (
+    <section className="border-2 border-foreground/80 bg-background">
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="w-full flex items-center justify-between px-4 py-3 hover:bg-muted/40 transition-colors text-left"
+      >
+        <div className="flex items-center gap-2.5">
+          <Sparkles className="h-4 w-4 text-primary shrink-0" />
+          <div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="font-black text-sm uppercase tracking-wider">Editor's Brief</span>
+              <span className={`flex items-center gap-1 text-xs font-bold capitalize ${moodColor}`}>
+                {moodIcon}
+                {brief.sentiment}
+              </span>
+            </div>
+            <p className="text-[10px] text-muted-foreground uppercase tracking-wider font-semibold mt-0.5">
+              {brief.article_count} stories analysed · {timeAgo(brief.generated_at)}
+            </p>
+          </div>
+        </div>
+        {expanded ? <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0" /> : <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0" />}
+      </button>
+
+      {expanded && (
+        <div className="px-4 pb-4 pt-1 border-t border-border space-y-3">
+          <div className="relative pl-5">
+            <Quote className="h-4 w-4 absolute left-0 top-0.5 text-primary/60" />
+            <p className="text-sm text-foreground/90 leading-relaxed italic">
+              {brief.brief}
+            </p>
+          </div>
+
+          {brief.key_points.length > 0 && (
+            <div className="border-l-2 border-primary/40 pl-3">
+              <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1.5">Key Points</p>
+              <ul className="space-y-1">
+                {brief.key_points.map((pt, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-foreground/80">
+                    <span className="text-primary font-bold mt-0.5">›</span>
+                    <span>{pt}</span>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {brief.impact_on_pakistan && (
+            <div className="bg-muted/50 p-3 border-l-2 border-foreground/40">
+              <p className="text-[10px] font-black uppercase tracking-widest text-foreground mb-1 flex items-center gap-1.5">
+                <MapPin className="h-3 w-3" /> Pakistan Outlook
+              </p>
+              <p className="text-sm text-foreground/80">{brief.impact_on_pakistan}</p>
+            </div>
+          )}
+        </div>
+      )}
+    </section>
+  );
+}
+
+// ─── Sentiment Gauge ──────────────────────────────────────────────────────────
+
+function SentimentGauge({ sentiment }: { sentiment: GrowNewsSentiment }) {
+  const labelColor = sentiment.label === 'Bullish'
+    ? 'text-gain' : sentiment.label === 'Bearish'
+    ? 'text-loss' : 'text-muted-foreground';
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-baseline justify-between">
+        <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground">Market Pulse</p>
+        <span className={`text-base font-black ${labelColor}`}>{sentiment.label}</span>
+      </div>
+
+      <div className="h-3 flex overflow-hidden border border-border">
+        <div className="bg-gain h-full transition-all duration-500" style={{ width: `${sentiment.positive}%` }} />
+        <div className="bg-muted-foreground/40 h-full transition-all duration-500" style={{ width: `${sentiment.neutral}%` }} />
+        <div className="bg-loss h-full transition-all duration-500" style={{ width: `${sentiment.negative}%` }} />
+      </div>
+
+      <div className="grid grid-cols-3 gap-1 text-center">
+        <div>
+          <p className="text-base font-black text-gain">{sentiment.positive.toFixed(0)}%</p>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Bullish</p>
+        </div>
+        <div>
+          <p className="text-base font-black text-muted-foreground">{sentiment.neutral.toFixed(0)}%</p>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Neutral</p>
+        </div>
+        <div>
+          <p className="text-base font-black text-loss">{sentiment.negative.toFixed(0)}%</p>
+          <p className="text-[9px] font-bold uppercase tracking-wider text-muted-foreground">Bearish</p>
+        </div>
+      </div>
+
+      <p className="text-[10px] text-muted-foreground text-center font-medium pt-1 border-t border-border">
+        Based on {sentiment.total_articles} stories · 24h
+      </p>
+    </div>
+  );
+}
+
+// ─── Pagination ───────────────────────────────────────────────────────────────
+
+function Pagination({
+  page, totalPages, onChange, disabled,
+}: { page: number; totalPages: number; onChange: (p: number) => void; disabled?: boolean }) {
+  if (totalPages <= 1) return null;
+
+  const pages: number[] = [];
+  const range = 2;
+  for (let i = Math.max(1, page - range); i <= Math.min(totalPages, page + range); i++) pages.push(i);
+
+  return (
+    <div className="flex items-center justify-center gap-1 pt-6 mt-4 border-t border-border">
+      <Button
+        variant="outline" size="sm"
+        disabled={page <= 1 || disabled}
+        onClick={() => onChange(page - 1)}
+        className="h-8 gap-1"
+      >
+        <ChevronLeft className="h-3.5 w-3.5" /> Prev
+      </Button>
+
+      {pages[0] > 1 && (
+        <>
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 font-bold" onClick={() => onChange(1)}>1</Button>
+          {pages[0] > 2 && <span className="px-1 text-muted-foreground">…</span>}
+        </>
+      )}
+
+      {pages.map((p) => (
+        <Button
+          key={p}
+          variant={p === page ? 'default' : 'ghost'}
+          size="sm"
+          className={`h-8 w-8 p-0 font-bold ${p === page ? '' : 'hover:bg-accent'}`}
+          onClick={() => onChange(p)}
+          disabled={disabled}
+        >
+          {p}
+        </Button>
+      ))}
+
+      {pages[pages.length - 1] < totalPages && (
+        <>
+          {pages[pages.length - 1] < totalPages - 1 && <span className="px-1 text-muted-foreground">…</span>}
+          <Button variant="ghost" size="sm" className="h-8 w-8 p-0 font-bold" onClick={() => onChange(totalPages)}>
+            {totalPages}
+          </Button>
+        </>
+      )}
+
+      <Button
+        variant="outline" size="sm"
+        disabled={page >= totalPages || disabled}
+        onClick={() => onChange(page + 1)}
+        className="h-8 gap-1"
+      >
+        Next <ChevronRight className="h-3.5 w-3.5" />
+      </Button>
+    </div>
+  );
+}
+
+// ─── Main Page ─────────────────────────────────────────────────────────────────
 
 export default function GrowNewsPage() {
-  const [articles, setArticles] = useState<NewsArticle[]>([]);
-  const [trendingArticles, setTrendingArticles] = useState<NewsArticle[]>([]);
-  const [brief, setBrief] = useState<MarketBrief | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
-  const [isBriefLoading, setIsBriefLoading] = useState(true);
-  const [isRefreshing, setIsRefreshing] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedSentiment, setSelectedSentiment] = useState<string>('all');
-  const [activeCategory, setActiveCategory] = useState<NewsCategory>('all');
+  const [featured, setFeatured] = useState<GrowNewsFeature | null>(null);
+  const [articles, setArticles] = useState<GrowNewsArticle[]>([]);
+  const [brief, setBrief] = useState<GrowNewsBrief | null>(null);
+  const [trending, setTrending] = useState<GrowNewsArticle[]>([]);
+  const [sentiment, setSentiment] = useState<GrowNewsSentiment | null>(null);
+  const [activeCategory, setActiveCategory] = useState<Category>('all');
   const [page, setPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
-
-  const fetchBrief = useCallback(async () => {
-    try {
-      setIsBriefLoading(true);
-      const cat = activeCategory !== 'all' ? activeCategory : undefined;
-      const res = await api.get('/news/brief', { params: { category: cat } });
-      setBrief(res.data);
-    } catch (error) {
-      console.error('Error fetching brief:', error);
-    } finally {
-      setIsBriefLoading(false);
-    }
-  }, [activeCategory]);
-
-  const fetchNews = useCallback(async (pageNum = 1) => {
-    try {
-      setIsLoading(true);
-      const params: Record<string, string> = { page: String(pageNum), page_size: '20' };
-      if (selectedSentiment !== 'all') params.sentiment = selectedSentiment;
-      if (activeCategory !== 'all') params.category = activeCategory;
-
-      const [articlesRes, trendingRes] = await Promise.all([
-        api.get('/news', { params }),
-        pageNum === 1 ? api.get('/news/trending') : Promise.resolve(null),
-      ]);
-
-      const data = articlesRes.data;
-      const items = data?.items || data?.articles || data || [];
-      setArticles(Array.isArray(items) ? items : []);
-      setTotalPages(data?.total_pages || 1);
-      setPage(pageNum);
-
-      if (trendingRes) {
-        const trending = trendingRes.data?.articles || trendingRes.data || [];
-        setTrendingArticles(Array.isArray(trending) ? trending : []);
-      }
-    } catch (error) {
-      console.error('Error fetching news:', error);
-      setArticles([]);
-    } finally {
-      setIsLoading(false);
-    }
-  }, [selectedSentiment, activeCategory]);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [isSearching, setIsSearching] = useState(false);
+  const [feedLoading, setFeedLoading] = useState(true);
+  const [heroLoading, setHeroLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const searchRef = useRef<ReturnType<typeof setTimeout>>();
 
   useEffect(() => {
-    fetchNews(1);
-    fetchBrief();
-  }, [fetchNews, fetchBrief]);
+    setHeroLoading(true);
+    Promise.all([
+      api.get('/news/featured').catch(() => ({ data: null })),
+      api.get('/news/brief').catch(() => ({ data: null })),
+      api.get('/news/trending').catch(() => ({ data: null })),
+      api.get('/news/sentiment').catch(() => ({ data: null })),
+    ]).then(([featRes, briefRes, trendRes, sentRes]) => {
+      if (featRes.data) setFeatured(featRes.data);
+      if (briefRes.data) setBrief(briefRes.data);
+      if (trendRes.data?.articles) setTrending(trendRes.data.articles);
+      if (sentRes.data) setSentiment(sentRes.data);
+    }).finally(() => setHeroLoading(false));
+  }, []);
 
-  const handleSearch = async () => {
-    if (!searchQuery.trim()) { fetchNews(1); return; }
+  const loadFeed = useCallback(async (cat: Category, pg: number) => {
+    setFeedLoading(true);
     try {
-      setIsLoading(true);
-      const res = await api.get('/news/search', { params: { q: searchQuery } });
-      const data = res.data?.items || res.data?.articles || res.data || [];
-      setArticles(Array.isArray(data) ? data : []);
+      const res = await api.get('/news', { params: { category: cat, page: pg, per_page: 20 } });
+      const data: GrowNewsFeed = res.data;
+      setArticles(data.articles || []);
+      setTotalPages(data.total_pages || 1);
+      setPage(pg);
+      if (typeof window !== 'undefined') window.scrollTo({ top: 0, behavior: 'smooth' });
+    } catch {
+      setArticles([]);
+    } finally {
+      setFeedLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!isSearching) loadFeed(activeCategory, 1);
+  }, [activeCategory, loadFeed, isSearching]);
+
+  const handleSearch = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      setIsSearching(false);
+      loadFeed(activeCategory, 1);
+      return;
+    }
+    setIsSearching(true);
+    setFeedLoading(true);
+    try {
+      const res = await api.get('/news/search', { params: { q } });
+      setArticles(res.data?.articles || []);
       setTotalPages(1);
-    } catch { setArticles([]); }
-    finally { setIsLoading(false); }
+      setPage(1);
+    } catch {
+      setArticles([]);
+    } finally {
+      setFeedLoading(false);
+    }
+  }, [activeCategory, loadFeed]);
+
+  const handleSearchInput = (val: string) => {
+    setSearchQuery(val);
+    clearTimeout(searchRef.current);
+    searchRef.current = setTimeout(() => handleSearch(val), 450);
+  };
+
+  const handleCategoryChange = (cat: Category) => {
+    setActiveCategory(cat);
+    setSearchQuery('');
+    setIsSearching(false);
   };
 
   const handleRefresh = async () => {
-    setIsRefreshing(true);
+    setRefreshing(true);
     try {
-      await api.post('/news/aggregate');
-      setTimeout(() => { fetchNews(1); fetchBrief(); setIsRefreshing(false); }, 3000);
-    } catch {
-      setIsRefreshing(false);
+      const [featRes, briefRes, trendRes, sentRes, feedRes] = await Promise.all([
+        api.get('/news/featured').catch(() => ({ data: null })),
+        api.get('/news/brief', { params: { category: activeCategory } }).catch(() => ({ data: null })),
+        api.get('/news/trending').catch(() => ({ data: null })),
+        api.get('/news/sentiment').catch(() => ({ data: null })),
+        api.get('/news', { params: { category: activeCategory, page: 1, per_page: 20 } }).catch(() => ({ data: null })),
+      ]);
+      if (featRes.data) setFeatured(featRes.data);
+      if (briefRes.data) setBrief(briefRes.data);
+      if (trendRes.data?.articles) setTrending(trendRes.data.articles);
+      if (sentRes.data) setSentiment(sentRes.data);
+      if (feedRes.data?.articles) { setArticles(feedRes.data.articles); setTotalPages(feedRes.data.total_pages || 1); setPage(1); }
+    } finally {
+      setRefreshing(false);
     }
   };
 
-  const sentimentCounts = {
-    positive: articles.filter(a => a.sentiment_label === 'positive').length,
-    neutral: articles.filter(a => !a.sentiment_label || a.sentiment_label === 'neutral').length,
-    negative: articles.filter(a => a.sentiment_label === 'negative').length,
-  };
+  const hero = activeCategory === 'all' && !isSearching
+    ? (featured?.hero || articles[0] || null)
+    : (articles[0] || null);
 
-  if (isLoading && isBriefLoading) {
-    return (
-      <div className="space-y-6">
-        <div className="space-y-2">
-          <div className="h-8 w-48 bg-muted animate-pulse rounded" />
-          <div className="h-4 w-64 bg-muted animate-pulse rounded" />
-        </div>
-        <CardSkeleton />
-        <div className="grid gap-6 lg:grid-cols-3">
-          <div className="lg:col-span-2 space-y-4">
-            {Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)}
-          </div>
-          <div className="space-y-4">
-            <CardSkeleton />
-            <CardSkeleton />
-          </div>
-        </div>
-      </div>
-    );
-  }
+  const featuredCards = activeCategory === 'all' && !isSearching
+    ? (featured?.featured || articles.slice(1, 4))
+    : articles.slice(1, 4);
 
-  const mood = brief ? getMoodLabel(brief.mood) : null;
+  const displayArticles = isSearching
+    ? articles
+    : activeCategory === 'all' && featured
+    ? (articles.length > 0 ? articles : featured.latest)
+    : articles;
+
+  const mainFeed = displayArticles.slice(hero ? (activeCategory === 'all' && !isSearching ? 0 : 1) : 0);
+
+  const today = format(new Date(), 'EEEE, MMMM d, yyyy');
+  const issueNo = format(new Date(), 'yyyyMMdd');
 
   return (
-    <div className="space-y-6 animate-fade-in">
-      {/* Header */}
-      <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-3xl font-bold">GrowNews Network</h1>
-          <p className="text-muted-foreground mt-1">
-            AI-powered financial intelligence across markets
-          </p>
+    <div className="max-w-[1280px] mx-auto px-1 sm:px-2 animate-fade-in">
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          MASTHEAD — Newspaper-style nameplate
+         ════════════════════════════════════════════════════════════════════════ */}
+      <header className="border-b-[3px] border-double border-foreground/80 pb-3 mb-4">
+        {/* Edition strip */}
+        <div className="flex items-center justify-between text-[10px] font-bold uppercase tracking-[0.2em] text-muted-foreground border-b border-border pb-2 mb-3">
+          <span className="hidden sm:inline">Vol. I · No. {issueNo.slice(-4)}</span>
+          <span className="sm:hidden">No. {issueNo.slice(-4)}</span>
+          <span className="hidden md:inline">{today}</span>
+          <span className="md:hidden">{format(new Date(), 'MMM d, yyyy')}</span>
+          <span className="hidden sm:inline">Pakistan Edition</span>
         </div>
-        <Button variant="outline" size="icon" onClick={handleRefresh} disabled={isRefreshing}>
-          <RefreshCw className={`h-4 w-4 ${isRefreshing ? 'animate-spin' : ''}`} />
-        </Button>
-      </div>
 
-      {/* AI Market Brief */}
-      {isBriefLoading ? (
-        <CardSkeleton />
-      ) : brief && (
-        <Card>
-          <CardHeader>
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Sparkles className="h-5 w-5 text-primary" />
-                <CardTitle>AI Market Brief</CardTitle>
-                <Badge variant="secondary" className="text-xs gap-1">
-                  <Sparkles className="h-3 w-3" /> AI
-                </Badge>
-              </div>
-              {mood && (
-                <div className={`px-3 py-1.5 rounded-full text-xs font-semibold capitalize bg-muted ${mood.className}`}>
-                  {brief.mood === 'bullish' && <TrendingUp className="h-3 w-3 inline mr-1" />}
-                  {brief.mood === 'bearish' && <TrendingDown className="h-3 w-3 inline mr-1" />}
-                  {mood.text} {brief.mood_score != null && `(${brief.mood_score}/100)`}
-                </div>
-              )}
+        {/* Nameplate */}
+        <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-3">
+          <div className="text-center sm:text-left">
+            <h1 className="text-4xl md:text-6xl font-black tracking-[-0.04em] leading-none">
+              <span className="text-foreground">Grow</span>
+              <span className="text-primary">News</span>
+            </h1>
+            <p className="text-[11px] md:text-xs italic text-muted-foreground mt-1.5 font-medium tracking-wide">
+              "Your daily dispatch on markets, money & macro"
+            </p>
+          </div>
+
+          <div className="flex items-center gap-2 justify-center sm:justify-end">
+            <div className="relative flex-1 sm:flex-none">
+              <Search className="absolute left-2.5 top-2.5 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search the paper…"
+                value={searchQuery}
+                onChange={(e) => handleSearchInput(e.target.value)}
+                className="pl-8 h-9 w-full sm:w-56 text-sm border-foreground/30"
+              />
             </div>
-          </CardHeader>
-          <CardContent className="space-y-5">
-            {/* Headline + Summary */}
-            <div>
-              <p className="font-semibold text-lg mb-1">{brief.headline}</p>
-              <p className="text-sm text-muted-foreground leading-relaxed">{brief.summary}</p>
+            <Button
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 border-foreground/30 shrink-0"
+              onClick={handleRefresh}
+              disabled={refreshing}
+              title="Refresh"
+            >
+              <RefreshCw className={`h-4 w-4 ${refreshing ? 'animate-spin' : ''}`} />
+            </Button>
+          </div>
+        </div>
+      </header>
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          SECTION NAV — newspaper sections strip
+         ════════════════════════════════════════════════════════════════════════ */}
+      <nav className="border-b border-foreground/30 mb-5 -mx-1 sm:mx-0">
+        <div className="flex items-center gap-0 overflow-x-auto scrollbar-none px-1 sm:px-0">
+          {CATEGORIES.map((cat) => {
+            const active = activeCategory === cat.value && !isSearching;
+            return (
+              <button
+                key={cat.value}
+                onClick={() => handleCategoryChange(cat.value)}
+                className={`flex items-center gap-1.5 px-3 sm:px-4 py-2.5 text-xs font-bold uppercase tracking-wider whitespace-nowrap border-b-2 transition-colors ${
+                  active
+                    ? 'border-primary text-primary'
+                    : 'border-transparent text-muted-foreground hover:text-foreground hover:border-foreground/40'
+                }`}
+              >
+                {cat.icon}
+                {cat.label}
+              </button>
+            );
+          })}
+          {isSearching && (
+            <div className="ml-auto pl-3 flex items-center gap-2 shrink-0">
+              <span className="text-xs text-muted-foreground italic">"{searchQuery}"</span>
+              <button
+                onClick={() => { setSearchQuery(''); setIsSearching(false); loadFeed(activeCategory, 1); }}
+                className="text-[10px] uppercase tracking-wider font-bold text-primary hover:underline"
+              >
+                Clear
+              </button>
             </div>
+          )}
+        </div>
+      </nav>
 
-            {/* Section Cards */}
-            {brief.sections && brief.sections.length > 0 && (
-              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3">
-                {brief.sections.map((section, i) => {
-                  const sectionMood = getMoodLabel(section.sentiment === 'positive' ? 'bullish' : section.sentiment === 'negative' ? 'bearish' : 'neutral');
-                  return (
-                    <div key={i} className="rounded-lg border bg-muted/30 p-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-muted-foreground">{getSectionIcon(section.category)}</span>
-                        <span className="font-medium text-sm">{section.title}</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground line-clamp-3 mb-2">{section.insight}</p>
-                      {section.key_events && section.key_events.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {section.key_events.slice(0, 2).map((e, j) => (
-                            <Badge key={j} variant="outline" className="text-[10px] py-0 font-normal">
-                              {e.length > 30 ? e.slice(0, 30) + '...' : e}
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  );
-                })}
+      {/* ════════════════════════════════════════════════════════════════════════
+          EDITOR'S BRIEF
+         ════════════════════════════════════════════════════════════════════════ */}
+      {brief && <div className="mb-5"><EditorsNote brief={brief} /></div>}
+
+      {/* ════════════════════════════════════════════════════════════════════════
+          LEAD STORY + COLUMN STORIES
+         ════════════════════════════════════════════════════════════════════════ */}
+      {!isSearching && (
+        heroLoading ? (
+          <div className="border-y-2 border-foreground/30 py-6 my-4">
+            <div className="grid md:grid-cols-5 gap-6">
+              <div className="md:col-span-3 aspect-[16/10] bg-muted animate-pulse" />
+              <div className="md:col-span-2 space-y-3">
+                <div className="h-3 w-24 bg-muted animate-pulse" />
+                <div className="h-8 bg-muted animate-pulse" />
+                <div className="h-8 bg-muted animate-pulse w-3/4" />
+                <div className="h-3 bg-muted animate-pulse" />
+                <div className="h-3 bg-muted animate-pulse" />
               </div>
-            )}
+            </div>
+          </div>
+        ) : hero ? (
+          <>
+            <LeadStory article={hero} />
 
-            {/* Risks & Opportunities */}
-            {(brief.risks?.length > 0 || brief.opportunities?.length > 0) && (
+            {featuredCards.length > 0 && (
               <>
-                <Separator />
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {brief.risks && brief.risks.length > 0 && (
-                    <div className="flex items-start gap-2 text-sm">
-                      <AlertTriangle className="h-4 w-4 text-loss mt-0.5 shrink-0" />
-                      <div>
-                        <span className="font-medium text-loss">Risks: </span>
-                        <span className="text-muted-foreground">{brief.risks.join(' | ')}</span>
-                      </div>
-                    </div>
-                  )}
-                  {brief.opportunities && brief.opportunities.length > 0 && (
-                    <div className="flex items-start gap-2 text-sm">
-                      <Lightbulb className="h-4 w-4 text-gain mt-0.5 shrink-0" />
-                      <div>
-                        <span className="font-medium text-gain">Opportunities: </span>
-                        <span className="text-muted-foreground">{brief.opportunities.join(' | ')}</span>
-                      </div>
-                    </div>
-                  )}
+                <SectionBar label="Top Stories" />
+                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5 md:gap-6 pb-2">
+                  {featuredCards.slice(0, 3).map((a, i) => (
+                    <ColumnStory key={a.url || i} article={a} />
+                  ))}
                 </div>
               </>
             )}
-
-            {brief.generated_at && (
-              <p className="text-xs text-muted-foreground">
-                Generated {formatDate(brief.generated_at)}
-              </p>
-            )}
-          </CardContent>
-        </Card>
+          </>
+        ) : null
       )}
 
-      {/* Category Tabs + Filters */}
-      <div className="flex flex-col md:flex-row md:items-center gap-4">
-        <Tabs value={activeCategory} onValueChange={(v) => setActiveCategory(v as NewsCategory)}>
-          <TabsList>
-            {CATEGORIES.map((cat) => (
-              <TabsTrigger key={cat.value} value={cat.value} className="gap-1.5">
-                {cat.icon}
-                <span className="hidden sm:inline">{cat.label}</span>
-              </TabsTrigger>
-            ))}
-          </TabsList>
-        </Tabs>
+      {/* ════════════════════════════════════════════════════════════════════════
+          MAIN GRID — Latest feed + Sidebar
+         ════════════════════════════════════════════════════════════════════════ */}
+      <div className="grid gap-6 lg:grid-cols-3 mt-2">
 
-        <div className="flex gap-2 flex-1 justify-end">
-          <div className="relative flex-1 max-w-xs">
-            <Search className="absolute left-3 top-3 h-4 w-4 text-muted-foreground" />
-            <Input
-              placeholder="Search news..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              className="pl-10"
-            />
-          </div>
-          <Select value={selectedSentiment} onValueChange={setSelectedSentiment}>
-            <SelectTrigger className="w-[130px]">
-              <SelectValue placeholder="Sentiment" />
-            </SelectTrigger>
-            <SelectContent>
-              <SelectItem value="all">All</SelectItem>
-              <SelectItem value="positive">Bullish</SelectItem>
-              <SelectItem value="neutral">Neutral</SelectItem>
-              <SelectItem value="negative">Bearish</SelectItem>
-            </SelectContent>
-          </Select>
-        </div>
-      </div>
+        {/* LEFT: Feed */}
+        <main className="lg:col-span-2">
+          <SectionBar
+            label={isSearching ? `Search Results` : (CATEGORIES.find(c => c.value === activeCategory)?.label || 'Latest') + ' Wire'}
+            accent
+          />
 
-      {/* Main Content */}
-      <div className="grid gap-6 lg:grid-cols-3">
-        {/* News Feed */}
-        <div className="lg:col-span-2 space-y-4">
-          {isLoading ? (
-            Array.from({ length: 4 }).map((_, i) => <CardSkeleton key={i} />)
+          {feedLoading ? (
+            <div>
+              {[0, 1, 2, 3, 4].map(i => (
+                <div key={i} className="grid grid-cols-[1fr_auto] gap-4 py-4 border-b border-border">
+                  <div className="space-y-2">
+                    <div className="h-3 w-32 bg-muted animate-pulse" />
+                    <div className="h-5 bg-muted animate-pulse" />
+                    <div className="h-3 bg-muted animate-pulse w-4/5" />
+                  </div>
+                  <div className="w-24 h-24 bg-muted animate-pulse shrink-0" />
+                </div>
+              ))}
+            </div>
+          ) : mainFeed.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-20 text-center border border-dashed border-border">
+              <AlertCircle className="h-10 w-10 text-muted-foreground mb-3" />
+              <p className="font-bold text-base">No stories to show</p>
+              <p className="text-sm text-muted-foreground mt-1 max-w-sm">
+                {isSearching
+                  ? 'No articles match your search. Try different keywords.'
+                  : 'The wire is quiet for this section. Try another category or refresh.'}
+              </p>
+            </div>
           ) : (
             <>
-              {/* Featured Article */}
-              {articles.length > 0 && (
-                <Card className="overflow-hidden">
-                  {articles[0].image_url && (
-                    <a href={articles[0].url} target="_blank" rel="noopener noreferrer">
-                      <div className="h-48 bg-muted overflow-hidden">
-                        <img
-                          src={articles[0].image_url}
-                          alt={articles[0].title}
-                          className="w-full h-full object-cover hover:scale-105 transition-transform duration-300"
-                        />
-                      </div>
-                    </a>
-                  )}
-                  <CardHeader>
-                    <div className="flex items-center gap-2 mb-2">
-                      {getSentimentBadge(articles[0].sentiment_label)}
-                      {getImpactLevel(articles[0].impact_score)}
-                      <span className="text-sm text-muted-foreground">
-                        {articles[0].source?.name || articles[0].author}
-                      </span>
-                    </div>
-                    <CardTitle className="text-xl hover:text-primary transition-colors">
-                      <a href={articles[0].url} target="_blank" rel="noopener noreferrer">
-                        {articles[0].title}
-                      </a>
-                    </CardTitle>
-                    <CardDescription className="line-clamp-3">
-                      {articles[0].summary}
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="flex items-center justify-between text-sm text-muted-foreground">
-                      <div className="flex items-center gap-1">
-                        <Clock className="h-4 w-4" />
-                        {formatDate(articles[0].published_at)}
-                      </div>
-                      <div className="flex gap-1">
-                        {articles[0].tags?.slice(0, 3).map((tag, i) => (
-                          <Badge key={i} variant="outline" className="text-xs">{tag}</Badge>
-                        ))}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              )}
+              <div>
+                {mainFeed.map((a, i) => (
+                  <ArticleRow key={a.url || i} article={a} />
+                ))}
+              </div>
 
-              {/* Article List */}
-              {articles.slice(1).map((article) => (
-                <Card key={article.id} className="hover:shadow-md transition-shadow">
-                  <CardContent className="pt-6">
-                    <div className="flex gap-4">
-                      {article.image_url && (
-                        <a
-                          href={article.url}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-24 h-24 flex-shrink-0 rounded-lg overflow-hidden bg-muted"
-                        >
-                          <img
-                            src={article.image_url}
-                            alt={article.title}
-                            className="w-full h-full object-cover hover:scale-105 transition-transform"
-                          />
-                        </a>
-                      )}
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-2">
-                          {getSentimentIcon(article.sentiment_label)}
-                          <span className="text-xs text-muted-foreground">
-                            {article.source?.name || article.author || 'Unknown'}
-                          </span>
-                          <span className="text-xs text-muted-foreground">·</span>
-                          <span className="text-xs text-muted-foreground">
-                            {formatDate(article.published_at)}
-                          </span>
-                          {getImpactLevel(article.impact_score)}
-                        </div>
-                        <h3 className="font-semibold mb-1 line-clamp-2 hover:text-primary transition-colors">
-                          <a href={article.url} target="_blank" rel="noopener noreferrer">
-                            {article.title}
-                          </a>
-                        </h3>
-                        <p className="text-sm text-muted-foreground line-clamp-2">
-                          {article.summary}
-                        </p>
-                        {article.tags && article.tags.length > 0 && (
-                          <div className="flex gap-1 mt-2 flex-wrap">
-                            {article.tags.slice(0, 3).map((tag, i) => (
-                              <Badge key={i} variant="outline" className="text-xs">{tag}</Badge>
-                            ))}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </CardContent>
-                </Card>
-              ))}
-
-              {/* Empty State */}
-              {articles.length === 0 && (
-                <Card>
-                  <CardContent className="py-12 text-center">
-                    <Newspaper className="h-12 w-12 mx-auto text-muted-foreground mb-4" />
-                    <p className="text-muted-foreground mb-4">No news articles found</p>
-                    <Button variant="outline" size="sm" onClick={handleRefresh}>
-                      <RefreshCw className="h-4 w-4 mr-2" />
-                      Fetch Latest News
-                    </Button>
-                  </CardContent>
-                </Card>
-              )}
-
-              {/* Pagination */}
-              {totalPages > 1 && (
-                <div className="flex items-center justify-center gap-2 pt-2">
-                  <Button
-                    variant="outline" size="sm"
-                    disabled={page <= 1}
-                    onClick={() => fetchNews(page - 1)}
-                  >
-                    Previous
-                  </Button>
-                  <span className="text-sm text-muted-foreground">
-                    Page {page} of {totalPages}
-                  </span>
-                  <Button
-                    variant="outline" size="sm"
-                    disabled={page >= totalPages}
-                    onClick={() => fetchNews(page + 1)}
-                  >
-                    Next
-                  </Button>
-                </div>
+              {!isSearching && (
+                <Pagination
+                  page={page}
+                  totalPages={totalPages}
+                  onChange={(p) => loadFeed(activeCategory, p)}
+                  disabled={feedLoading}
+                />
               )}
             </>
           )}
-        </div>
+        </main>
 
-        {/* Sidebar */}
-        <div className="space-y-6">
-          {/* Market Sentiment */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Market Sentiment</CardTitle>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <TrendingUp className="h-4 w-4 text-gain" />
-                    <span className="text-sm">Bullish</span>
-                  </div>
-                  <span className="font-medium">{sentimentCounts.positive}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <Minus className="h-4 w-4 text-muted-foreground" />
-                    <span className="text-sm">Neutral</span>
-                  </div>
-                  <span className="font-medium">{sentimentCounts.neutral}</span>
-                </div>
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-2">
-                    <TrendingDown className="h-4 w-4 text-loss" />
-                    <span className="text-sm">Bearish</span>
-                  </div>
-                  <span className="font-medium">{sentimentCounts.negative}</span>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
+        {/* RIGHT: Sidebar */}
+        <aside className="space-y-6 lg:border-l lg:border-foreground/20 lg:pl-6">
+
+          {/* Market Pulse */}
+          <section>
+            <SectionBar label="Market Pulse" />
+            {sentiment ? (
+              <SentimentGauge sentiment={sentiment} />
+            ) : (
+              <div className="h-24 bg-muted animate-pulse" />
+            )}
+          </section>
 
           {/* Trending */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Trending Now</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              {trendingArticles.slice(0, 5).map((article, index) => (
-                <div key={article.id} className="flex gap-3">
-                  <span className="text-2xl font-bold text-muted-foreground/50">
-                    {String(index + 1).padStart(2, '0')}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <h4 className="font-medium text-sm line-clamp-2 hover:text-primary transition-colors">
-                      <a href={article.url} target="_blank" rel="noopener noreferrer">
-                        {article.title}
-                      </a>
-                    </h4>
-                    <div className="flex items-center gap-2 mt-1">
-                      {getSentimentIcon(article.sentiment_label)}
-                      <span className="text-xs text-muted-foreground">
-                        {article.source?.name || article.author}
-                      </span>
+          <section>
+            <SectionBar label="Most Read" />
+            {trending.length === 0 ? (
+              <div className="space-y-3">
+                {[0, 1, 2, 3].map(i => (
+                  <div key={i} className="flex gap-3 py-3 border-b border-border">
+                    <div className="w-8 h-6 bg-muted animate-pulse" />
+                    <div className="flex-1 space-y-2">
+                      <div className="h-3 bg-muted animate-pulse" />
+                      <div className="h-3 bg-muted animate-pulse w-2/3" />
                     </div>
                   </div>
-                </div>
-              ))}
-
-              {trendingArticles.length === 0 && (
-                <p className="text-sm text-muted-foreground text-center py-4">
-                  No trending articles
-                </p>
-              )}
-            </CardContent>
-          </Card>
-
-          {/* Sources */}
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-lg">Sources</CardTitle>
-              <CardDescription>12+ financial news sources</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="flex flex-wrap gap-1.5">
-                {[
-                  'Reuters', 'CNBC', 'Bloomberg', 'CoinDesk', 'CoinTelegraph',
-                  'Business Recorder', 'Dawn', 'Kitco', 'Decrypt',
-                ].map((source) => (
-                  <Badge key={source} variant="outline" className="text-xs font-normal">
-                    {source}
-                  </Badge>
                 ))}
               </div>
-            </CardContent>
-          </Card>
-        </div>
+            ) : (
+              <div>
+                {trending.slice(0, 8).map((a, i) => (
+                  <BriefRow key={a.url || i} article={a} index={i} />
+                ))}
+              </div>
+            )}
+          </section>
+
+          {/* Sources */}
+          <section>
+            <SectionBar label="Wire Services" />
+            <div className="flex flex-wrap gap-1.5">
+              {[
+                'Reuters', 'Bloomberg', 'CNBC', 'Forbes',
+                'CoinDesk', 'CoinTelegraph', 'Decrypt',
+                'Business Recorder', 'Dawn', 'The News',
+                'Kitco', 'CryptoPanic',
+              ].map((src) => (
+                <span
+                  key={src}
+                  className="text-[10px] font-bold uppercase tracking-wider px-2 py-1 border border-border text-muted-foreground"
+                >
+                  {src}
+                </span>
+              ))}
+            </div>
+          </section>
+
+          {/* Footer */}
+          <section className="pt-4 border-t border-foreground/30 text-center">
+            <div className="flex items-center justify-center gap-1.5 mb-1.5">
+              <Globe className="h-3 w-3 text-primary" />
+              <span className="text-[10px] font-black uppercase tracking-widest">GrowNews Wire</span>
+            </div>
+            <p className="text-[10px] text-muted-foreground italic font-medium">
+              AI-curated · Updated continuously
+            </p>
+          </section>
+        </aside>
       </div>
     </div>
   );

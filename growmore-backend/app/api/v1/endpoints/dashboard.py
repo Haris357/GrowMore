@@ -96,46 +96,80 @@ async def get_quick_stats(
 ):
     """
     Get quick statistics for dashboard widgets.
-
     Lightweight endpoint for real-time stat updates.
+    Resilient: a failure in one section returns zeros for that section, never 500s.
     """
+    import logging
+    log = logging.getLogger(__name__)
     db = get_supabase_service_client()
 
-    # Market stats
-    stocks_result = db.table("stocks").select("change_percentage").execute()
-    stocks = stocks_result.data or []
-    advancing = sum(1 for s in stocks if float(s.get("change_percentage", 0) or 0) > 0)
-    declining = sum(1 for s in stocks if float(s.get("change_percentage", 0) or 0) < 0)
+    # Resolve every plausible user identifier we may need to match (UUID columns vs text columns)
+    user_uuid = str(current_user.id) if current_user.id else None
+    user_fb = current_user.firebase_uid
 
-    # User holdings value
-    holdings_result = db.table("holdings").select(
-        "symbol,quantity,average_price"
-    ).eq("user_id", current_user.firebase_uid).execute()
+    # ─── Market stats (no user dep) ─────────────────────────────────────────
+    advancing = declining = total_stocks = 0
+    try:
+        stocks_result = db.table("stocks").select("change_percentage").execute()
+        stocks = stocks_result.data or []
+        total_stocks = len(stocks)
+        advancing = sum(1 for s in stocks if float(s.get("change_percentage", 0) or 0) > 0)
+        declining = sum(1 for s in stocks if float(s.get("change_percentage", 0) or 0) < 0)
+    except Exception as e:
+        log.warning(f"quick-stats market: {e}")
 
-    holdings_data = holdings_result.data or []
-    portfolio_value = 0
-    total_invested = 0
+    # ─── Portfolio value (user-owned: try UUID first, fall back to firebase_uid) ──
+    portfolio_value = total_invested = 0.0
+    holdings_data = []
+    for uid_val in (user_uuid, user_fb):
+        if not uid_val:
+            continue
+        try:
+            holdings_result = db.table("holdings").select(
+                "symbol,quantity,average_price"
+            ).eq("user_id", uid_val).execute()
+            holdings_data = holdings_result.data or []
+            break  # success — stop trying alternates
+        except Exception as e:
+            log.debug(f"quick-stats holdings with uid={uid_val}: {e}")
+            holdings_data = []
+            continue
 
     if holdings_data:
-        symbols = list({h["symbol"] for h in holdings_data if h.get("symbol")})
-        prices_result = db.table("stocks").select("symbol,current_price").in_("symbol", symbols).execute()
-        price_map = {s["symbol"]: float(s.get("current_price", 0) or 0) for s in (prices_result.data or [])}
+        try:
+            symbols = list({h["symbol"] for h in holdings_data if h.get("symbol")})
+            if symbols:
+                prices_result = db.table("stocks").select("symbol,current_price").in_("symbol", symbols).execute()
+                price_map = {s["symbol"]: float(s.get("current_price", 0) or 0) for s in (prices_result.data or [])}
+                for h in holdings_data:
+                    qty = int(h.get("quantity", 0) or 0)
+                    avg = float(h.get("average_price", 0) or 0)
+                    current = price_map.get(h.get("symbol", ""), avg)
+                    portfolio_value += qty * current
+                    total_invested += qty * avg
+        except Exception as e:
+            log.warning(f"quick-stats portfolio compute: {e}")
 
-        for h in holdings_data:
-            qty = int(h.get("quantity", 0))
-            avg = float(h.get("average_price", 0))
-            current = price_map.get(h.get("symbol", ""), avg)
-            portfolio_value += qty * current
-            total_invested += qty * avg
-
-    # Unread notifications
-    from app.services.notification_service import NotificationService
-    notif_service = NotificationService()
-    unread = await notif_service.get_unread_count(current_user.firebase_uid)
+    # ─── Unread notifications (resilient) ──────────────────────────────────
+    unread = 0
+    try:
+        from app.services.notification_service import NotificationService
+        notif_service = NotificationService()
+        # Try with UUID first, then firebase_uid
+        for uid_val in (user_uuid, user_fb):
+            if not uid_val:
+                continue
+            try:
+                unread = await notif_service.get_unread_count(uid_val)
+                break
+            except Exception:
+                continue
+    except Exception as e:
+        log.warning(f"quick-stats notifications: {e}")
 
     return {
         "market": {
-            "total_stocks": len(stocks),
+            "total_stocks": total_stocks,
             "advancing": advancing,
             "declining": declining,
         },
@@ -145,6 +179,6 @@ async def get_quick_stats(
             "gain_loss": round(portfolio_value - total_invested, 2),
         },
         "notifications": {
-            "unread": unread,
+            "unread": unread or 0,
         },
     }

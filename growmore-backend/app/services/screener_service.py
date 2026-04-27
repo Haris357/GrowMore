@@ -459,11 +459,27 @@ class ScreenerService:
         Run a stock screen with given filters.
         """
         try:
-            # Start with base query - select all fields with exact count
+            # Search filter: resolve matching company_ids first (PostgREST OR on
+            # embedded tables is unreliable — two-step is more portable)
+            search_company_ids: Optional[list] = None
+            search_term = str(filters.get("search", "")).strip()
+            if search_term:
+                sym_res = self.db.table("companies").select("id").ilike("symbol", f"%{search_term}%").execute()
+                name_res = self.db.table("companies").select("id").ilike("name", f"%{search_term}%").execute()
+                matched = {r["id"] for r in (sym_res.data or [])} | {r["id"] for r in (name_res.data or [])}
+                search_company_ids = list(matched)
+
+            # Start with base query
             query = self.db.table("stocks").select(
                 "*, companies!inner(id, symbol, name, logo_url, sector_id, market_id, sectors(id, name, code))",
-                count="exact",
+                count="estimated",
             )
+
+            # Apply search company_id filter
+            if search_company_ids is not None:
+                if not search_company_ids:
+                    return {"stocks": [], "total": 0, "page": 1, "per_page": limit, "total_pages": 0}
+                query = query.in_("company_id", search_company_ids)
 
             # Apply market filter
             if market_id:
@@ -587,6 +603,10 @@ class ScreenerService:
         """Apply a single filter to the query."""
         # Handle special filters
         if filter_code in ["sort", "limit", "offset"]:
+            return query
+
+        # Search filter — matches symbol or name (handled before query is built)
+        if filter_code == "search":
             return query
 
         # Sector filter

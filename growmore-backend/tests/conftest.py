@@ -19,11 +19,15 @@ def mock_firebase():
 
 
 @pytest.fixture
-def mock_groq():
-    with patch("app.ai.groq_client.get_groq_client") as mock:
+def mock_openai():
+    with patch("app.ai.openai_client.get_openai_client") as mock:
         client = MagicMock()
         mock.return_value = client
         yield client
+
+
+# Backwards-compat alias for any test that still uses mock_groq
+mock_groq = mock_openai
 
 
 @pytest.fixture

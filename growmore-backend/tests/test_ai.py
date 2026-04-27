@@ -2,13 +2,15 @@ import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from decimal import Decimal
 
+OPENAI_PATCH = "app.ai.openai_client.get_openai_client"
+
 
 class TestSentimentAnalyzer:
     @pytest.mark.asyncio
     async def test_analyze_positive_sentiment(self):
         from app.ai.sentiment_analyzer import SentimentAnalyzer
 
-        with patch("app.ai.groq_client.get_groq_client") as mock_groq:
+        with patch(OPENAI_PATCH) as mock_ai:
             mock_client = MagicMock()
             mock_client.complete_json = AsyncMock(return_value={
                 "sentiment_score": 0.8,
@@ -16,7 +18,7 @@ class TestSentimentAnalyzer:
                 "confidence": 0.9,
                 "key_factors": ["growth", "profit"],
             })
-            mock_groq.return_value = mock_client
+            mock_ai.return_value = mock_client
 
             analyzer = SentimentAnalyzer()
             analyzer.groq_client = mock_client
@@ -33,7 +35,7 @@ class TestSentimentAnalyzer:
     async def test_analyze_negative_sentiment(self):
         from app.ai.sentiment_analyzer import SentimentAnalyzer
 
-        with patch("app.ai.groq_client.get_groq_client") as mock_groq:
+        with patch(OPENAI_PATCH) as mock_ai:
             mock_client = MagicMock()
             mock_client.complete_json = AsyncMock(return_value={
                 "sentiment_score": -0.7,
@@ -41,7 +43,7 @@ class TestSentimentAnalyzer:
                 "confidence": 0.85,
                 "key_factors": ["decline", "loss"],
             })
-            mock_groq.return_value = mock_client
+            mock_ai.return_value = mock_client
 
             analyzer = SentimentAnalyzer()
             analyzer.groq_client = mock_client
@@ -58,10 +60,10 @@ class TestSentimentAnalyzer:
     async def test_analyze_error_handling(self):
         from app.ai.sentiment_analyzer import SentimentAnalyzer
 
-        with patch("app.ai.groq_client.get_groq_client") as mock_groq:
+        with patch(OPENAI_PATCH) as mock_ai:
             mock_client = MagicMock()
             mock_client.complete_json = AsyncMock(return_value={"error": "API error"})
-            mock_groq.return_value = mock_client
+            mock_ai.return_value = mock_client
 
             analyzer = SentimentAnalyzer()
             analyzer.groq_client = mock_client
@@ -77,7 +79,7 @@ class TestNewsSummarizer:
     async def test_summarize_article(self):
         from app.ai.news_summarizer import NewsSummarizer
 
-        with patch("app.ai.groq_client.get_groq_client") as mock_groq:
+        with patch(OPENAI_PATCH) as mock_ai:
             mock_client = MagicMock()
             mock_client.complete_json = AsyncMock(return_value={
                 "summary": "Test summary of the article.",
@@ -85,7 +87,7 @@ class TestNewsSummarizer:
                 "categories": ["stocks"],
                 "tags": ["test", "article"],
             })
-            mock_groq.return_value = mock_client
+            mock_ai.return_value = mock_client
 
             summarizer = NewsSummarizer()
             summarizer.groq_client = mock_client
@@ -106,7 +108,7 @@ class TestImpactPredictor:
     async def test_predict_impact(self):
         from app.ai.impact_predictor import ImpactPredictor
 
-        with patch("app.ai.groq_client.get_groq_client") as mock_groq:
+        with patch(OPENAI_PATCH) as mock_ai:
             mock_client = MagicMock()
             mock_client.complete_json = AsyncMock(return_value={
                 "impact_score": 0.8,
@@ -118,7 +120,7 @@ class TestImpactPredictor:
                 "time_horizon": "short_term",
                 "analysis": "Significant market impact expected.",
             })
-            mock_groq.return_value = mock_client
+            mock_ai.return_value = mock_client
 
             predictor = ImpactPredictor()
             predictor.groq_client = mock_client

@@ -275,7 +275,7 @@ async def process_unprocessed_articles(limit: int = 20) -> Dict[str, Any]:
 
 async def _analyze_with_ai(article: Dict[str, Any]) -> Optional[Dict[str, Any]]:
     """Analyze a single article with AI for sentiment, summary, and impact."""
-    from app.ai.groq_client import GroqClient
+    from app.ai.openai_client import get_openai_client
 
     title = article.get("title", "")
     summary = article.get("summary", "") or article.get("content", "")
@@ -298,7 +298,7 @@ Return ONLY valid JSON:
 }}"""
 
     try:
-        client = GroqClient()
+        client = get_openai_client()
         response = await client.generate(prompt=prompt, max_tokens=300, temperature=0.2)
 
         import json
@@ -397,20 +397,9 @@ Generate a JSON market brief covering ALL relevant areas. Return ONLY valid JSON
 }}"""
 
     try:
-        if settings.openai_api_key:
-            from openai import AsyncOpenAI
-            client = AsyncOpenAI(api_key=settings.openai_api_key)
-            response = await client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.5,
-                max_tokens=1000,
-            )
-            content = response.choices[0].message.content.strip()
-        else:
-            from app.ai.groq_client import GroqClient
-            client = GroqClient()
-            content = await client.generate(prompt=prompt, max_tokens=1000, temperature=0.5)
+        from app.ai.openai_client import get_openai_client
+        client = get_openai_client()
+        content = await client.generate(prompt=prompt, max_tokens=1000, temperature=0.5)
 
         import json
         import re

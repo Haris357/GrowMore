@@ -91,34 +91,44 @@ class PSXSyncService:
             result.symbols_found = len(market_rows)
             logger.info(f"Daily sync: parsed {len(market_rows)} stocks from DPS market-watch")
 
+            price_updates = []
+            history_updates = []
+            name_updates = []
+
             for row in market_rows:
                 try:
-                    # Ensure company exists in DB
                     if not self.data_writer.get_ids(row.symbol):
                         self.data_writer.ensure_company_exists(
                             row.symbol, row.name, row.sector_code
                         )
 
-                    # Update stock price
+                    ids = self.data_writer.get_ids(row.symbol)
+                    if not ids:
+                        continue
+                    company_id, stock_id = ids
+
                     price_data = map_market_watch_to_stock_update(row)
-                    if self.data_writer.update_stock_price(row.symbol, price_data):
-                        result.stocks_updated += 1
+                    price_updates.append({**price_data, "id": stock_id})
 
-                        # Update company name
-                        self.data_writer.update_company_name(row.symbol, row.name)
+                    if row.name and row.name != row.symbol:
+                        name_updates.append({"id": company_id, "name": row.name})
 
-                        # Upsert stock_history
-                        history_data = {
-                            "open_price": row.open_price,
-                            "high_price": row.high_price,
-                            "low_price": row.low_price,
-                            "close_price": row.current_price,
-                            "volume": row.volume,
-                        }
-                        if self.data_writer.upsert_stock_history(row.symbol, date.today(), history_data):
-                            result.history_inserted += 1
+                    history_updates.append({
+                        "stock_id": stock_id,
+                        "date": date.today().isoformat(),
+                        "open_price": row.open_price,
+                        "high_price": row.high_price,
+                        "low_price": row.low_price,
+                        "close_price": row.current_price,
+                        "volume": row.volume,
+                    })
                 except Exception as e:
                     result.errors.append(f"{row.symbol}: {e}")
+
+            # Batch flush — 3 queries instead of ~1950
+            result.stocks_updated = self.data_writer.batch_update_stock_prices(price_updates)
+            result.history_inserted = self.data_writer.batch_upsert_stock_history(history_updates)
+            self.data_writer.batch_update_company_names(name_updates)
 
         except Exception as e:
             logger.warning(f"DPS market-watch failed: {e}. Falling back to PSX Terminal ticks.")
@@ -179,6 +189,10 @@ class PSXSyncService:
             result.symbols_found = len(market_rows)
             logger.info(f"Phase 1: parsed {len(market_rows)} stocks")
 
+            price_updates = []
+            history_updates = []
+            name_updates = []
+
             for row in market_rows:
                 try:
                     if not self.data_writer.get_ids(row.symbol):
@@ -186,22 +200,33 @@ class PSXSyncService:
                             row.symbol, row.name, row.sector_code
                         )
 
-                    price_data = map_market_watch_to_stock_update(row)
-                    if self.data_writer.update_stock_price(row.symbol, price_data):
-                        result.stocks_updated += 1
-                        self.data_writer.update_company_name(row.symbol, row.name)
+                    ids = self.data_writer.get_ids(row.symbol)
+                    if not ids:
+                        continue
+                    company_id, stock_id = ids
 
-                        history_data = {
-                            "open_price": row.open_price,
-                            "high_price": row.high_price,
-                            "low_price": row.low_price,
-                            "close_price": row.current_price,
-                            "volume": row.volume,
-                        }
-                        if self.data_writer.upsert_stock_history(row.symbol, date.today(), history_data):
-                            result.history_inserted += 1
+                    price_data = map_market_watch_to_stock_update(row)
+                    price_updates.append({**price_data, "id": stock_id})
+
+                    if row.name and row.name != row.symbol:
+                        name_updates.append({"id": company_id, "name": row.name})
+
+                    history_updates.append({
+                        "stock_id": stock_id,
+                        "date": date.today().isoformat(),
+                        "open_price": row.open_price,
+                        "high_price": row.high_price,
+                        "low_price": row.low_price,
+                        "close_price": row.current_price,
+                        "volume": row.volume,
+                    })
                 except Exception as e:
                     result.errors.append(f"{row.symbol} price: {e}")
+
+            # Batch flush
+            result.stocks_updated = self.data_writer.batch_update_stock_prices(price_updates)
+            result.history_inserted = self.data_writer.batch_upsert_stock_history(history_updates)
+            self.data_writer.batch_update_company_names(name_updates)
         except Exception as e:
             result.errors.append(f"CRITICAL: DPS market-watch failed: {e}")
             logger.error(f"Phase 1 failed: {e}")

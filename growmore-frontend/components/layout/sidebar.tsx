@@ -12,6 +12,7 @@ import {
   Menu,
   X,
   Leaf,
+  Bitcoin,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import {
@@ -25,6 +26,7 @@ import {
 const navigation = [
   { name: 'Dashboard', href: '/dashboard', icon: LayoutDashboard },
   { name: 'Stocks', href: '/stocks', icon: TrendingUp },
+  { name: 'Crypto', href: '/crypto', icon: Bitcoin },
   { name: 'Commodities', href: '/commodities', icon: Coins },
   { name: 'GrowNews', href: '/news', icon: Newspaper },
   { name: 'Portfolio', href: '/portfolio', icon: Briefcase },

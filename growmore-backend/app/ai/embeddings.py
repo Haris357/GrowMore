@@ -1,12 +1,9 @@
 import hashlib
 from typing import List, Optional
 
-from app.ai.groq_client import get_groq_client
-
 
 class EmbeddingService:
     def __init__(self):
-        self.groq_client = get_groq_client()
         self.embedding_dim = 1536
         self._cache: dict = {}
 
