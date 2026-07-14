@@ -12,10 +12,10 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { signUpWithEmail, signInWithGoogle } from '@/lib/firebase';
 import { useAuthStore } from '@/stores/authStore';
-import { Leaf, Eye, EyeOff, Loader2, ArrowRight, Mail, Lock, User, Shield, Check } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowRight, Mail, Lock, User, Check } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { ThemeToggle } from '@/components/common/theme-toggle';
+import { AuthShell } from '@/components/auth/auth-shell';
 
 const registerSchema = z.object({
   displayName: z.string().min(2, 'Name must be at least 2 characters'),
@@ -85,33 +85,13 @@ export default function RegisterPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12 relative">
-      <div className="absolute top-5 right-5">
-        <ThemeToggle />
-      </div>
-
-      <div className="w-full max-w-[400px] space-y-6">
-        {/* Logo */}
-        <div className="text-center">
-          <Link href="/" className="inline-flex items-center gap-2.5">
-            <div className="bg-primary/10 p-2 rounded-xl">
-              <Leaf className="h-6 w-6 text-primary" />
-            </div>
-            <span className="text-xl font-bold tracking-tight">GrowMore</span>
-          </Link>
-        </div>
-
-        {/* Header */}
-        <div className="text-center space-y-1.5">
-          <h1 className="text-2xl font-bold tracking-tight">Create your account</h1>
-          <p className="text-sm text-muted-foreground">Start tracking your investments in minutes</p>
-        </div>
-
+    <AuthShell title="Create your account" subtitle="Start tracking your investments in minutes">
+      <div className="space-y-5">
         {/* Google Sign Up */}
         <Button
           type="button"
           variant="outline"
-          className="w-full h-11 rounded-xl font-medium"
+          className="w-full h-11 rounded-xl font-medium bg-background/60"
           onClick={handleGoogleSignIn}
           disabled={isLoading || isGoogleLoading}
         >
@@ -134,7 +114,7 @@ export default function RegisterPage() {
             <div className="w-full border-t border-border" />
           </div>
           <div className="relative flex justify-center">
-            <span className="bg-background px-3 text-xs text-muted-foreground uppercase tracking-wider">or</span>
+            <span className="bg-card/80 px-3 text-xs text-muted-foreground uppercase tracking-wider rounded-full">or</span>
           </div>
         </div>
 
@@ -306,13 +286,7 @@ export default function RegisterPage() {
             Sign in
           </Link>
         </p>
-
-        {/* Security */}
-        <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/60">
-          <Shield className="h-3 w-3" />
-          <span>Your data is protected with 256-bit encryption</span>
-        </div>
       </div>
-    </div>
+    </AuthShell>
   );
 }

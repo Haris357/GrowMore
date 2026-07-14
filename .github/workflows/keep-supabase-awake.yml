@@ -1,0 +1,39 @@
+name: Keep Supabase awake
+
+# Supabase pauses a free project after ~7 days of inactivity. This makes a tiny
+# request to the PostgREST API every 6 hours so the project stays counted as
+# active — independent of whether the Render backend is up.
+#
+# Setup (one time):
+#   Repo → Settings → Secrets and variables → Actions
+#     Variables → New variable:  SUPABASE_URL  = https://<project-ref>.supabase.co
+#     Secrets   → New secret:    SUPABASE_ANON_KEY = <your anon/public key>
+#   (The anon key is the public client key — safe to use here; it's protected by RLS.)
+
+on:
+  schedule:
+    - cron: '17 */6 * * *'   # every 6 hours (offset minute to avoid congestion)
+  workflow_dispatch: {}
+
+concurrency:
+  group: keep-supabase
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping Supabase REST
+        run: |
+          URL="${{ vars.SUPABASE_URL }}"
+          KEY="${{ secrets.SUPABASE_ANON_KEY }}"
+          if [ -z "$URL" ] || [ -z "$KEY" ]; then
+            echo "::warning::Set SUPABASE_URL (variable) and SUPABASE_ANON_KEY (secret) to enable."
+            exit 0
+          fi
+          # A GET to the PostgREST root needs a live DB connection → counts as activity.
+          code=$(curl -s -o /dev/null -w "%{http_code}" --max-time 30 \
+            "${URL%/}/rest/v1/" -H "apikey: ${KEY}")
+          echo "Supabase REST responded: HTTP ${code}"
+          # Any HTTP response means the project served the request (i.e. it's awake).
+          case "$code" in 2*|3*|4*) echo "OK — project is active";; *) echo "No response (will retry next run)";; esac

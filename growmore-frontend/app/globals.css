@@ -237,3 +237,27 @@
     transform: translateX(0);
   }
 }
+
+/* ── Liquid-glass ambient background ─────────────────────────────── */
+@keyframes blob {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(40px, -50px) scale(1.12); }
+  66% { transform: translate(-30px, 30px) scale(0.92); }
+}
+.animate-blob { animation: blob 18s ease-in-out infinite; }
+.animation-delay-2000 { animation-delay: -6s; }
+.animation-delay-4000 { animation-delay: -12s; }
+
+/* Frosted glass surface */
+.glass-panel {
+  background: hsl(var(--card) / 0.55);
+  backdrop-filter: blur(24px) saturate(160%);
+  -webkit-backdrop-filter: blur(24px) saturate(160%);
+  border: 1px solid hsl(var(--border) / 0.6);
+  box-shadow: 0 8px 40px -12px hsl(0 0% 0% / 0.18);
+}
+.dark .glass-panel {
+  background: hsl(var(--card) / 0.45);
+  border-color: hsl(0 0% 100% / 0.08);
+  box-shadow: 0 8px 40px -12px hsl(0 0% 0% / 0.5);
+}

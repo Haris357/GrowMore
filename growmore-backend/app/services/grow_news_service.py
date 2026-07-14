@@ -31,12 +31,35 @@ _SENTIMENT_TTL = 600  # 10 min — sentiment
 
 _cache: Dict[str, Any] = {}
 
+# Targeted queries — quoted phrases + OR operators give NewsAPI much better
+# relevance than loose keyword soups. `keywords` is used as a fallback filter
+# when we supplement a sparse category from the "all" pool.
 CATEGORIES = {
-    "pakistan":  {"q": "Pakistan stock exchange PSX karachi economy finance", "label": "Pakistan Markets"},
-    "stocks":    {"q": "stock market equities shares trading investing",       "label": "Stocks & Equities"},
-    "crypto":    {"q": "cryptocurrency bitcoin ethereum blockchain defi",      "label": "Crypto"},
-    "commodities": {"q": "gold silver oil commodities prices inflation",       "label": "Commodities"},
-    "global":    {"q": "global economy federal reserve interest rates GDP",   "label": "Global Economy"},
+    "pakistan": {
+        "q": '("KSE-100" OR "Pakistan Stock Exchange" OR PSX OR "Pakistan rupee" OR "State Bank of Pakistan" OR "Pakistan IMF" OR "Pakistan economy" OR "Pakistan inflation")',
+        "label": "Pakistan Markets",
+        "keywords": ["pakistan", "psx", "kse", "rupee", "karachi", "islamabad", "imf"],
+    },
+    "stocks": {
+        "q": '("stock market" OR "S&P 500" OR "Dow Jones" OR Nasdaq OR "Wall Street" OR equities OR "Federal Reserve" OR "earnings report" OR "stocks rally" OR "stocks plunge" OR "rate cut" OR "rate hike")',
+        "label": "Stocks & Markets",
+        "keywords": ["stock", "shares", "equities", "wall street", "nasdaq", "dow", "s&p", "fed", "rate", "earnings"],
+    },
+    "crypto": {
+        "q": '(Bitcoin OR Ethereum OR "BTC price" OR "ETH price" OR "crypto market" OR "Bitcoin ETF" OR Solana OR XRP OR "crypto regulation" OR cryptocurrency)',
+        "label": "Crypto",
+        "keywords": ["bitcoin", "btc", "ethereum", "eth", "crypto", "blockchain", "altcoin", "solana", "xrp"],
+    },
+    "commodities": {
+        "q": '("gold price" OR "silver price" OR "crude oil" OR "oil prices" OR OPEC OR "Brent crude" OR "WTI crude" OR "gold rally" OR "Middle East oil" OR "natural gas prices" OR "commodity prices")',
+        "label": "Commodities & Energy",
+        "keywords": ["gold", "silver", "oil", "opec", "commodity", "metals", "crude", "brent", "wti", "gas"],
+    },
+    "global": {
+        "q": '("Federal Reserve" OR "interest rate" OR inflation OR recession OR tariffs OR "trade war" OR "Ukraine war" OR "Middle East tensions" OR Israel OR Iran OR geopolitical OR "China economy")',
+        "label": "Global Markets",
+        "keywords": ["fed", "inflation", "recession", "war", "tariff", "ukraine", "israel", "iran", "china", "europe", "geopolitic"],
+    },
 }
 
 
@@ -76,8 +99,8 @@ class GrowNewsService:
             "q": cfg["q"],
             "language": "en",
             "sortBy": "publishedAt",
-            "pageSize": 20,
-            "from": (datetime.now(timezone.utc) - timedelta(days=2)).strftime("%Y-%m-%d"),
+            "pageSize": 30,
+            "from": (datetime.now(timezone.utc) - timedelta(days=3)).strftime("%Y-%m-%d"),
         })
         articles = []
         for a in (data or {}).get("articles", []):
@@ -234,6 +257,23 @@ Respond in JSON only:
             if a.get("url") and a["url"] not in seen:
                 seen.add(a["url"])
                 unique.append(a)
+
+        # Fallback: when a specific category came back sparse (NewsAPI rate
+        # limited, narrow query, or upstream outage), supplement from the
+        # broader "all" pool by matching category keywords on title/desc.
+        if category != "all" and len(unique) < 8:
+            all_cached = _cached("feed_all_1", _FEED_TTL)
+            if all_cached and all_cached.get("articles"):
+                cat_keywords = CATEGORIES.get(category, {}).get("keywords", [])
+                for a in all_cached["articles"]:
+                    if not a.get("url") or a["url"] in seen:
+                        continue
+                    haystack = ((a.get("title") or "") + " " + (a.get("description") or "")).lower()
+                    if any(kw in haystack for kw in cat_keywords):
+                        unique.append({**a, "category": category})
+                        seen.add(a["url"])
+                        if len(unique) >= 20:
+                            break
 
         # AI sentiment on first page (top 10 articles to stay within rate limits)
         if page == 1:

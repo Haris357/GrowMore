@@ -26,6 +26,8 @@ from app.api.v1.endpoints import (
     crypto,
     # Admin
     admin,
+    # Market activity
+    market_activity,
 )
 
 api_router = APIRouter()
@@ -43,6 +45,7 @@ api_router.include_router(search.router, prefix="/search", tags=["Search"])
 
 # Part 2: Advanced Features
 api_router.include_router(screener.router, prefix="/screener", tags=["Stock Screener"])
+api_router.include_router(market_activity.router, prefix="/market", tags=["Market Activity"])
 api_router.include_router(goals.router, prefix="/goals", tags=["Investment Goals"])
 api_router.include_router(personalization.router, prefix="/personalization", tags=["Personalization"])
 api_router.include_router(notifications.router, prefix="/notifications", tags=["Notifications"])

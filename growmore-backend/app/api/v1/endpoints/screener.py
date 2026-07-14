@@ -139,6 +139,12 @@ class ScreenResultResponse(BaseModel):
 
 
 # Endpoints
+@router.get("/sectors")
+async def get_sectors():
+    """Distinct sector names (as stored) for the filter sidebar."""
+    return {"sectors": ScreenerService().get_active_sectors()}
+
+
 @router.get("/strategies", response_model=List[StrategyResponse])
 async def get_strategies(
     featured_only: bool = Query(False, description="Only return featured strategies"),

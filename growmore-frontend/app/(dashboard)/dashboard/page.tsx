@@ -6,6 +6,7 @@ import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { EmptyState } from '@/components/common/empty-state';
+import { StockLogo } from '@/components/stocks/stock-logo';
 import { ConnectionStatus, MarketTicker } from '@/components/common/live-price';
 import {
   TrendingUp, TrendingDown, Wallet, Target, Activity, Briefcase,
@@ -30,7 +31,6 @@ interface DashboardData {
 
 interface StockMover { symbol: string; name: string; current_price: number; change_percentage: number; volume?: number; logo_url?: string }
 interface SectorData { sector: string; avg_change_pct: number; advancing: number; declining: number; stock_count: number }
-interface MarketIndex { id?: string; name: string; symbol: string; value: number; change: number; change_percentage: number; updated_at?: string }
 interface QuickStats {
   market: { total_stocks: number; advancing: number; declining: number };
   portfolio: { value: number; invested: number; gain_loss: number };
@@ -198,64 +198,84 @@ export default function DashboardPage() {
   const [data, setData] = useState<DashboardData | null>(null);
   const [movers, setMovers] = useState<{ top_gainers: StockMover[]; top_losers: StockMover[]; most_active: StockMover[] } | null>(null);
   const [sectors, setSectors] = useState<SectorData[]>([]);
-  const [indices, setIndices] = useState<MarketIndex[]>([]);
   const [quickStats, setQuickStats] = useState<QuickStats | null>(null);
   const [coins, setCoins] = useState<Coin[]>([]);
   const [cryptoGlobal, setCryptoGlobal] = useState<CryptoGlobal | null>(null);
   const [news, setNews] = useState<NewsArticle[]>([]);
   const [brief, setBrief] = useState<NewsBrief | null>(null);
   const [commodities, setCommodities] = useState<CommoditiesData | null>(null);
-  const [isLoading, setIsLoading] = useState(true);
+  const [metalInsight, setMetalInsight] = useState<{ summary: string; trend: string; sources?: { outlet: string; url: string; title: string }[] } | null>(null);
+
+  // Per-section loading flags so each card renders the moment its own
+  // request resolves — instead of waiting for the slowest of all 10 calls.
+  type LoadKey = 'summary' | 'movers' | 'sectors' | 'quickStats' | 'coins' | 'cryptoGlobal' | 'news' | 'brief' | 'commodities';
+  const [loading, setLoading] = useState<Record<LoadKey, boolean>>({
+    summary: true, movers: true, sectors: true, quickStats: true,
+    coins: true, cryptoGlobal: true, news: true, brief: true, commodities: true,
+  });
   const [isRefreshing, setIsRefreshing] = useState(false);
 
   const fetchAll = useCallback(async (background = false) => {
-    if (!background) setIsLoading(true);
-    else setIsRefreshing(true);
+    if (background) setIsRefreshing(true);
+    const done = (k: LoadKey) => setLoading(p => (p[k] ? { ...p, [k]: false } : p));
 
-    try {
-      const [
-        summaryRes, moversRes, sectorsRes, indicesRes, quickStatsRes,
-        coinsRes, cryptoGlobalRes, featuredRes, briefRes, commoditiesRes,
-      ] = await Promise.all([
-        api.get<DashboardData>('/dashboard/summary').catch(() => ({ data: null })),
-        api.get('/dashboard/movers').catch(() => ({ data: null })),
-        api.get<{ sectors: SectorData[] }>('/dashboard/sectors').catch(() => ({ data: { sectors: [] } })),
-        api.get<{ indices: MarketIndex[] }>('/dashboard/indices').catch(() => ({ data: { indices: [] } })),
-        api.get<QuickStats>('/dashboard/quick-stats').catch(() => ({ data: null })),
-        api.get<{ coins: Coin[] }>('/crypto/markets', { params: { page: 1, per_page: 6 } }).catch(() => ({ data: { coins: [] } })),
-        api.get<CryptoGlobal>('/crypto/global').catch(() => ({ data: null })),
-        api.get<{ hero: NewsArticle | null; featured: NewsArticle[]; latest: NewsArticle[] }>('/news/featured').catch(() => ({ data: null })),
-        api.get<NewsBrief>('/news/brief').catch(() => ({ data: null })),
-        api.get<CommoditiesData>('/commodities/prices').catch(() => ({ data: null })),
-      ]);
+    const tasks: Promise<unknown>[] = [
+      api.get<DashboardData>('/dashboard/summary')
+        .then(r => setData(r.data)).catch(() => {}).finally(() => done('summary')),
+      api.get('/dashboard/movers')
+        .then(r => setMovers(r.data as any)).catch(() => {}).finally(() => done('movers')),
+      api.get<{ sectors: SectorData[] }>('/dashboard/sectors')
+        .then(r => setSectors(r.data?.sectors || [])).catch(() => {}).finally(() => done('sectors')),
+      api.get<QuickStats>('/dashboard/quick-stats')
+        .then(r => setQuickStats(r.data)).catch(() => {}).finally(() => done('quickStats')),
+      api.get<{ coins: Coin[] }>('/crypto/markets', { params: { page: 1, per_page: 6 } })
+        .then(r => setCoins(r.data?.coins || [])).catch(() => {}).finally(() => done('coins')),
+      api.get<CryptoGlobal>('/crypto/global')
+        .then(r => setCryptoGlobal(r.data)).catch(() => {}).finally(() => done('cryptoGlobal')),
+      // Single AI news call powers both the AI Market Brief and Latest News (DB-cached, no token cost on load).
+      api.get<{ brief: any; items: any[]; generated_at?: string }>('/news/ai', { params: { count: 12 } })
+        .then(r => {
+          const d = r.data;
+          const b = d?.brief;
+          if (b) {
+            setBrief({
+              brief: b.summary || b.headline || '',
+              sentiment: b.mood === 'bullish' ? 'bullish' : b.mood === 'bearish' ? 'bearish' : 'neutral',
+              key_points: b.key_points || [],
+              impact_on_pakistan: b.impact_on_pakistan || '',
+              generated_at: d.generated_at || '',
+              article_count: (d.items || []).length,
+            });
+          }
+          setNews((d?.items || []).slice(0, 5).map((it: any) => ({
+            title: it.headline,
+            url: it.source_url,
+            source_name: it.source_name,
+            image_url: it.image_url,
+            summary: it.summary,
+            sentiment: it.sentiment === 'bullish' ? 'positive' : it.sentiment === 'bearish' ? 'negative' : 'neutral',
+          })));
+        }).catch(() => {}).finally(() => { done('news'); done('brief'); }),
+      api.get<CommoditiesData>('/commodities/prices')
+        .then(r => setCommodities(r.data)).catch(() => {}).finally(() => done('commodities')),
+      // Commodities AI insight (web-search grounded, server-cached — no per-load token cost).
+      api.get('/commodities/analysis')
+        .then(r => setMetalInsight(r.data)).catch(() => {}),
+    ];
 
-      setData(summaryRes.data);
-      setMovers(moversRes.data as any);
-      setSectors(sectorsRes.data?.sectors || []);
-      setIndices(indicesRes.data?.indices || []);
-      setQuickStats(quickStatsRes.data);
-      setCoins(coinsRes.data?.coins || []);
-      setCryptoGlobal(cryptoGlobalRes.data);
-      const feat = featuredRes.data;
-      const featList: NewsArticle[] = feat
-        ? [feat.hero, ...feat.featured, ...feat.latest].filter(Boolean) as NewsArticle[]
-        : [];
-      setNews(featList.slice(0, 5));
-      setBrief(briefRes.data);
-      setCommodities(commoditiesRes.data);
-    } finally {
-      setIsLoading(false);
-      setIsRefreshing(false);
-    }
+    await Promise.allSettled(tasks);
+    setIsRefreshing(false);
   }, []);
 
   useEffect(() => { fetchAll(); }, [fetchAll]);
+
+  const isAnyLoading = Object.values(loading).some(Boolean);
 
   const portfolio = data?.portfolio;
   const market = data?.market;
   const goals = data?.goals;
   const notifications = data?.notifications;
-  const kseIndex = market?.indices?.find(i => i.symbol === 'KSE100' || i.name?.includes('KSE') || i.name?.includes('100')) || market?.indices?.[0] || indices[0];
+  const kseIndex = market?.indices?.find(i => i.symbol === 'KSE100' || i.name?.includes('KSE') || i.name?.includes('100')) || market?.indices?.[0];
   const heroNews = news[0];
   const sideNews = news.slice(1, 4);
 
@@ -279,12 +299,11 @@ export default function DashboardPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <ConnectionStatus />
           <Button
             variant="outline"
             size="sm"
             onClick={() => fetchAll(true)}
-            disabled={isRefreshing || isLoading}
+            disabled={isRefreshing || isAnyLoading}
             className="gap-2"
           >
             <RefreshCw className={cn('h-4 w-4', isRefreshing && 'animate-spin')} />
@@ -294,9 +313,9 @@ export default function DashboardPage() {
       </div>
 
       {/* ════ Hero Stats ═══════════════════════════════════════════════════ */}
-      {isLoading ? (
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          {[0, 1, 2, 3].map(i => (
+      {loading.summary ? (
+        <div className="grid gap-3 md:grid-cols-3">
+          {[0, 1, 2].map(i => (
             <Card key={i} className="p-4">
               <div className="h-9 w-9 rounded-xl bg-muted animate-pulse mb-3" />
               <div className="h-3 w-20 bg-muted animate-pulse rounded mb-2" />
@@ -306,7 +325,7 @@ export default function DashboardPage() {
           ))}
         </div>
       ) : (
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-3 md:grid-cols-3">
           <HeroStatCard
             title="Portfolio Value"
             value={fmtPKR(portfolio?.total_value || 0)}
@@ -330,13 +349,6 @@ export default function DashboardPage() {
             trend={(kseIndex?.change_percentage || 0) > 0 ? 'up' : (kseIndex?.change_percentage || 0) < 0 ? 'down' : 'neutral'}
             sub={<PctChip value={kseIndex?.change_percentage || 0} />}
             href="/stocks"
-          />
-          <HeroStatCard
-            title="Goals Progress"
-            value={`${goals?.overall_progress?.toFixed(0) || 0}%`}
-            icon={Target}
-            sub={<span className="text-muted-foreground">{goals?.active || 0} active · {goals?.achieved || 0} done</span>}
-            href="/goals"
           />
         </div>
       )}
@@ -434,7 +446,7 @@ export default function DashboardPage() {
             href="/news"
             accent="bg-foreground/10 text-foreground"
           />
-          {isLoading ? (
+          {loading.news ? (
             <div className="grid gap-3 sm:grid-cols-5">
               <Card className="sm:col-span-3 overflow-hidden">
                 <div className="aspect-[16/9] bg-muted animate-pulse" />
@@ -547,7 +559,7 @@ export default function DashboardPage() {
             accent="bg-orange-500/10 text-orange-500"
           />
           <Card className="p-2">
-            {isLoading ? (
+            {loading.coins ? (
               <div className="space-y-1">
                 {[0, 1, 2, 3, 4, 5].map(i => (
                   <div key={i} className="flex items-center gap-2.5 p-2">
@@ -629,7 +641,7 @@ export default function DashboardPage() {
                   : movers?.most_active;
                 return (
                   <TabsContent key={tab} value={tab} className="mt-3 space-y-1">
-                    {isLoading ? (
+                    {loading.movers ? (
                       <div className="space-y-1">
                         {[0, 1, 2, 3, 4].map(i => (
                           <div key={i} className="flex items-center justify-between p-2">
@@ -655,18 +667,12 @@ export default function DashboardPage() {
                           className="flex items-center justify-between p-2 rounded-lg hover:bg-muted/40 transition-colors group"
                         >
                           <div className="flex items-center gap-3 min-w-0 flex-1">
-                            {stock.logo_url ? (
-                              <img
-                                src={stock.logo_url}
-                                alt={stock.symbol}
-                                className="h-8 w-8 rounded-lg shrink-0 object-cover"
-                                onError={(e) => { (e.currentTarget as HTMLImageElement).style.display = 'none'; }}
-                              />
-                            ) : (
-                              <div className="h-8 w-8 rounded-lg bg-primary/10 text-primary flex items-center justify-center text-[10px] font-bold shrink-0">
-                                {stock.symbol?.slice(0, 3)}
-                              </div>
-                            )}
+                            <StockLogo
+                              symbol={stock.symbol}
+                              logoUrl={stock.logo_url}
+                              className="h-8 w-8 rounded-lg"
+                              fallbackClassName="rounded-lg text-[10px]"
+                            />
                             <div className="min-w-0 flex-1">
                               <p className="text-sm font-semibold tracking-tight truncate">{stock.symbol}</p>
                               <p className="text-[11px] text-muted-foreground truncate">{stock.name || stock.symbol}</p>
@@ -703,7 +709,7 @@ export default function DashboardPage() {
             </CardTitle>
           </CardHeader>
           <CardContent className="pt-0">
-            {isLoading ? (
+            {loading.sectors ? (
               <div className="space-y-2">
                 {[0, 1, 2, 3, 4, 5].map(i => (
                   <div key={i} className="flex items-center justify-between p-2.5 bg-muted/30 rounded-lg">
@@ -754,54 +760,8 @@ export default function DashboardPage() {
         </Card>
       </div>
 
-      {/* ════ Indices + Commodities + Goals ════════════════════════════════ */}
-      <div className="grid gap-4 lg:grid-cols-3">
-
-        {/* Market Indices */}
-        <Card>
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base flex items-center gap-2">
-              <LineChart className="h-4 w-4 text-info" /> Market Indices
-            </CardTitle>
-          </CardHeader>
-          <CardContent className="pt-0">
-            {isLoading ? (
-              <div className="divide-y divide-border">
-                {[0, 1, 2, 3, 4].map(i => (
-                  <div key={i} className="flex items-center justify-between py-2.5">
-                    <div className="space-y-1.5">
-                      <div className="h-3 w-24 bg-muted animate-pulse rounded" />
-                      <div className="h-2.5 w-12 bg-muted animate-pulse rounded" />
-                    </div>
-                    <div className="text-right space-y-1.5">
-                      <div className="h-3 w-16 bg-muted animate-pulse rounded ml-auto" />
-                      <div className="h-2.5 w-10 bg-muted animate-pulse rounded ml-auto" />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : indices.length > 0 ? (
-              <div className="divide-y divide-border">
-                {indices.slice(0, 5).map((idx, i) => (
-                  <div key={idx.id ?? idx.symbol ?? `idx-${i}`} className="flex items-center justify-between py-2.5">
-                    <div className="min-w-0">
-                      <p className="text-sm font-semibold truncate">{idx.name}</p>
-                      <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">{idx.symbol}</p>
-                    </div>
-                    <div className="text-right shrink-0">
-                      <p className="text-sm font-bold tabular-nums">{idx.value?.toLocaleString()}</p>
-                      <PctChip value={idx.change_percentage || 0} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-            ) : (
-              <div className="text-center py-8 text-sm text-muted-foreground">
-                No indices data
-              </div>
-            )}
-          </CardContent>
-        </Card>
+      {/* ════ Commodities ══════════════════════════════════════════════════ */}
+      <div className="grid gap-4">
 
         {/* Commodities */}
         <Card>
@@ -818,7 +778,7 @@ export default function DashboardPage() {
             </div>
           </CardHeader>
           <CardContent className="pt-0 space-y-2">
-            {isLoading ? (
+            {loading.commodities ? (
               <>
                 {[0, 1].map(i => (
                   <div key={i} className="flex items-center justify-between p-2.5 bg-muted/30 rounded-lg">
@@ -860,6 +820,33 @@ export default function DashboardPage() {
                     </div>
                   </div>
                 ))}
+
+                {/* AI commodities insight (web-search grounded, with sources) */}
+                {metalInsight?.summary && (
+                  <div className="mt-1 rounded-lg border border-primary/15 bg-primary/[0.04] p-2.5">
+                    <div className="mb-1 flex items-center gap-1.5">
+                      <Sparkles className="h-3 w-3 text-primary" />
+                      <span className="text-[10px] font-black uppercase tracking-widest text-primary">AI Insight</span>
+                      {metalInsight.trend && (
+                        <span className={cn('text-[10px] font-bold uppercase',
+                          metalInsight.trend === 'bullish' ? 'text-gain' : metalInsight.trend === 'bearish' ? 'text-loss' : 'text-muted-foreground')}>
+                          · {metalInsight.trend}
+                        </span>
+                      )}
+                    </div>
+                    <p className="text-xs leading-relaxed text-foreground/80 line-clamp-4">{metalInsight.summary}</p>
+                    {metalInsight.sources && metalInsight.sources.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1">
+                        {metalInsight.sources.slice(0, 3).map((s, i) => (
+                          <a key={i} href={s.url} target="_blank" rel="noopener noreferrer"
+                            className="inline-flex items-center gap-1 rounded-full border border-border bg-background px-2 py-0.5 text-[10px] text-muted-foreground hover:border-primary/40 hover:text-primary">
+                            <Globe className="h-2.5 w-2.5" /> {s.outlet}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )}
               </>
             ) : (
               <div className="text-center py-8 text-sm text-muted-foreground">
@@ -870,63 +857,6 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Goals & Alerts */}
-        <Card>
-          <CardHeader className="pb-3">
-            <div className="flex items-center justify-between">
-              <CardTitle className="text-base flex items-center gap-2">
-                <Target className="h-4 w-4 text-primary" /> Goals & Alerts
-              </CardTitle>
-              <Link href="/goals">
-                <Button variant="ghost" size="sm" className="h-7 text-xs gap-1">
-                  Open <ChevronRight className="h-3 w-3" />
-                </Button>
-              </Link>
-            </div>
-          </CardHeader>
-          <CardContent className="pt-0 space-y-3">
-            <div className="grid grid-cols-3 gap-2 text-center">
-              <div className="bg-primary/5 rounded-lg p-2.5">
-                <p className="text-2xl font-black text-primary tabular-nums">{goals?.active || 0}</p>
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mt-0.5">Active</p>
-              </div>
-              <div className="bg-gain/5 rounded-lg p-2.5">
-                <p className="text-2xl font-black text-gain tabular-nums">{goals?.achieved || 0}</p>
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mt-0.5">Achieved</p>
-              </div>
-              <div className="bg-muted/40 rounded-lg p-2.5">
-                <p className="text-2xl font-black tabular-nums">{goals?.overall_progress?.toFixed(0) || 0}%</p>
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mt-0.5">Progress</p>
-              </div>
-            </div>
-
-            {/* Progress bar */}
-            <div>
-              <div className="flex justify-between text-[10px] uppercase tracking-wider font-semibold text-muted-foreground mb-1.5">
-                <span>Overall Progress</span>
-                <span>{goals?.overall_progress?.toFixed(0) || 0}%</span>
-              </div>
-              <div className="h-2 bg-muted rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-primary rounded-full transition-all duration-500"
-                  style={{ width: `${Math.min(goals?.overall_progress || 0, 100)}%` }}
-                />
-              </div>
-            </div>
-
-            {/* Notifications row */}
-            <div className="grid grid-cols-2 gap-2 pt-2 border-t border-border">
-              <div className="text-center">
-                <p className="text-base font-bold tabular-nums">{notifications?.unread_count ?? quickStats?.notifications?.unread ?? 0}</p>
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Unread</p>
-              </div>
-              <div className="text-center">
-                <p className="text-base font-bold tabular-nums">{notifications?.active_alerts || 0}</p>
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-muted-foreground">Alerts</p>
-              </div>
-            </div>
-          </CardContent>
-        </Card>
       </div>
 
       {/* ════ Footer ═════════════════════════════════════════════════════ */}

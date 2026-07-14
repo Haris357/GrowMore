@@ -33,6 +33,12 @@ export interface MetalHistoryResponse {
   history: MetalHistory[];
 }
 
+export interface AnalysisSource {
+  title: string;
+  url: string;
+  outlet: string;
+}
+
 export interface MarketAnalysis {
   summary: string;
   trend: 'bullish' | 'bearish' | 'neutral';
@@ -40,5 +46,8 @@ export interface MarketAnalysis {
   outlook: string;
   gold_insight: string;
   silver_insight: string;
+  what_to_watch?: string;
+  sources?: AnalysisSource[];
   generated_at: string;
+  model?: string | null;
 }

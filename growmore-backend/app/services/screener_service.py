@@ -448,6 +448,14 @@ class ScreenerService:
         """Get all PSX sectors."""
         return [{"code": code, "name": name} for code, name in PSX_SECTORS.items()]
 
+    def get_active_sectors(self) -> List[str]:
+        """Distinct sector names as stored in the DB (exact match for filtering)."""
+        try:
+            res = self.db.table("sectors").select("name").execute()
+            return sorted({r["name"] for r in (res.data or []) if r.get("name")})
+        except Exception:
+            return []
+
     async def run_screen(
         self,
         filters: Dict[str, Any],
@@ -599,6 +607,14 @@ class ScreenerService:
                 "error": str(e),
             }
 
+    def _sector_ids(self, names: List[str]) -> List[str]:
+        """Resolve sector names to sector_ids (for reliable inner-column filtering)."""
+        try:
+            res = self.db.table("sectors").select("id, name").in_("name", names).execute()
+            return [r["id"] for r in (res.data or [])]
+        except Exception:
+            return []
+
     def _apply_filter(self, query, filter_code: str, filter_value: Any):
         """Apply a single filter to the query."""
         # Handle special filters
@@ -617,7 +633,24 @@ class ScreenerService:
             return query.eq("companies.sector_id", filter_value)
 
         if filter_code == "sector_name":
-            return query.eq("companies.sectors.name", filter_value)
+            ids = self._sector_ids([filter_value])
+            # filter on the inner companies.sector_id (filtering on the non-inner
+            # sectors embed does not actually restrict rows in PostgREST)
+            return query.in_("companies.sector_id", ids) if ids else query
+
+        if filter_code == "sector_names":
+            if isinstance(filter_value, list) and filter_value:
+                ids = self._sector_ids(filter_value)
+                return query.in_("companies.sector_id", ids) if ids else query
+            return query
+
+        # Shariah compliance — encoded in the company name suffix "NON-COMPLIANT".
+        if filter_code == "shariah":
+            if filter_value == "compliant":
+                return query.not_.ilike("companies.name", "%NON-COMPLIANT%")
+            if filter_value == "non_compliant":
+                return query.ilike("companies.name", "%NON-COMPLIANT%")
+            return query
 
         # Near 52-week high/low special filters
         if filter_code == "near_52_high" and filter_value:

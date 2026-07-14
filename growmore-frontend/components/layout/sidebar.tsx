@@ -11,10 +11,10 @@ import {
   Briefcase,
   Menu,
   X,
-  Leaf,
   Bitcoin,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
+import { BrandLogo } from '@/components/brand-logo';
 import {
   Tooltip,
   TooltipContent,
@@ -60,7 +60,7 @@ export function Sidebar({ isOpen, onClose }: SidebarProps) {
         {/* Header */}
         <div className="flex items-center justify-between h-14 px-4 border-b border-sidebar-border">
           <Link href="/dashboard" className="flex items-center gap-2">
-            <Leaf className="h-7 w-7 text-primary" />
+            <BrandLogo className="h-7 w-7 text-primary" />
             <span className="text-lg font-bold">GrowMore</span>
           </Link>
           <Button
@@ -165,7 +165,7 @@ export function CollapsedSidebar({ onOpen }: { onOpen: () => void }) {
           <Tooltip>
             <TooltipTrigger asChild>
               <Link href="/dashboard">
-                <Leaf className="h-6 w-6 text-primary" />
+                <BrandLogo className="h-6 w-6 text-primary" />
               </Link>
             </TooltipTrigger>
             <TooltipContent side="right">

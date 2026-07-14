@@ -162,16 +162,23 @@ class PSXDataWriter:
 
     def batch_update_company_names(self, rows: List[dict]) -> None:
         """
-        Batch update company names. Each row must include 'id' and 'name'.
+        Update company names. Each row must include 'id' and 'name'.
+
+        Uses per-row UPDATE (not upsert): companies.market_id is NOT NULL, and an
+        upsert would attempt an INSERT with a null market_id (ON CONFLICT does not
+        suppress NOT NULL violations), failing the whole batch.
         """
         if not rows:
             return
-        for i in range(0, len(rows), BATCH_SIZE):
-            batch = rows[i:i + BATCH_SIZE]
+        for row in rows:
+            company_id = row.get("id")
+            name = row.get("name")
+            if not company_id or not name:
+                continue
             try:
-                self.db.table("companies").upsert(batch, on_conflict="id").execute()
+                self.db.table("companies").update({"name": name}).eq("id", company_id).execute()
             except Exception as e:
-                logger.error(f"Error batch updating company names (chunk {i}): {e}")
+                logger.error(f"Error updating company name for {company_id}: {e}")
 
     # ─── Financial statements ───────────────────────────────────────────────────
 
@@ -208,22 +215,54 @@ class PSXDataWriter:
         if not rows:
             return 0
 
-        # Try batch upsert using the unique constraint columns
+        # The table's uniqueness is an expression index — COALESCE(quarter, 0) —
+        # which PostgREST's on_conflict cannot target (it only accepts plain
+        # columns), so a real upsert is impossible here. DPS returns the company's
+        # full statement history on every run, so replace the company's rows:
+        # delete then insert.
         try:
-            self.db.table("financial_statements").upsert(
-                rows, on_conflict="company_id,period_type,fiscal_year,quarter"
-            ).execute()
+            self.db.table("financial_statements").delete().eq("company_id", company_id).execute()
+            self.db.table("financial_statements").insert(rows).execute()
             return len(rows)
-        except Exception:
-            # Fallback: individual upserts (handles NULL quarter edge case)
-            saved = 0
-            for row in rows:
-                try:
-                    self.db.table("financial_statements").upsert(row).execute()
-                    saved += 1
-                except Exception as e:
-                    logger.debug(f"Error saving financial FY{row.get('fiscal_year')}: {e}")
-            return saved
+        except Exception as e:
+            logger.error(f"Error saving financial statements for {company_id}: {e}")
+            return 0
+
+    # ─── Derived ratios (computed from financial statements) ─────────────────────
+
+    def compute_and_store_all_ratios(self) -> int:
+        """
+        Compute ROE/ROA/margins/leverage/growth from each company's stored annual
+        financials and write them to the stocks table. Fills the gaps left by the
+        unavailable PSX Terminal fundamentals API. Returns count of stocks updated.
+        """
+        from .ratios import compute_ratios_from_financials
+
+        stocks = self.db.table("stocks").select("id, company_id, market_cap").execute().data or []
+        updated = 0
+        for st in stocks:
+            try:
+                fins = (
+                    self.db.table("financial_statements")
+                    .select("*")
+                    .eq("company_id", st["company_id"])
+                    .eq("period_type", "annual")
+                    .order("fiscal_year", desc=True)
+                    .limit(3)
+                    .execute()
+                    .data
+                    or []
+                )
+                if not fins:
+                    continue
+                ratios = compute_ratios_from_financials(fins, market_cap=st.get("market_cap"))
+                if ratios:
+                    self.db.table("stocks").update(ratios).eq("id", st["id"]).execute()
+                    updated += 1
+            except Exception as e:
+                logger.debug(f"Ratio compute failed for stock {st.get('id')}: {e}")
+        logger.info(f"Computed & stored ratios for {updated} stocks")
+        return updated
 
     # ─── Company/stock creation ─────────────────────────────────────────────────
 
@@ -251,11 +290,20 @@ class PSXDataWriter:
                     self._symbol_cache[symbol] = (company_id, stock_row.data[0]["id"])
                 return company_id
 
+            # Resolve sector by NAME (the sectors table mixes short codes like "BANK"
+            # with DPS numeric codes, so matching on code alone is unreliable).
             sector_id = None
             if sector_code:
-                sector_result = self.db.table("sectors").select("id").eq("code", sector_code).execute()
-                if sector_result.data:
-                    sector_id = sector_result.data[0]["id"]
+                from .constants import PSX_SECTOR_CODES
+                sector_name = PSX_SECTOR_CODES.get(sector_code)
+                if sector_name:
+                    r = self.db.table("sectors").select("id").eq("name", sector_name).execute()
+                    if r.data:
+                        sector_id = r.data[0]["id"]
+                if sector_id is None:
+                    r = self.db.table("sectors").select("id").eq("code", sector_code).execute()
+                    if r.data:
+                        sector_id = r.data[0]["id"]
 
             market_result = self.db.table("markets").select("id").limit(1).execute()
             market_id = market_result.data[0]["id"] if market_result.data else None

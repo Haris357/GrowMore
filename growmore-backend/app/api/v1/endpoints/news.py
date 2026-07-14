@@ -6,12 +6,23 @@ from typing import Optional
 from fastapi import APIRouter, Query
 
 from app.services.grow_news_service import GrowNewsService
+from app.services.ai_news_service import get_ai_news
 
 router = APIRouter()
 
 
 def _svc() -> GrowNewsService:
     return GrowNewsService()
+
+
+@router.get("/ai")
+async def get_ai_feed(
+    category: str = Query(default="all"),
+    count: int = Query(default=12, ge=4, le=24),
+    refresh: bool = Query(default=False),
+):
+    """Fully AI-generated market news feed (web-search grounded) — brief + items with real sources & images."""
+    return await get_ai_news(category=category, count=count, refresh=refresh)
 
 
 @router.get("")

@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { Button } from '@/components/ui/button';
 import {
   TrendingUp, TrendingDown, Minus, RefreshCw, DollarSign, Sparkles,
-  Calculator, Scale, Coins, Quote, AlertCircle, Clock,
+  Calculator, Scale, Coins, Quote, AlertCircle, Clock, Eye, ExternalLink, Globe,
 } from 'lucide-react';
 import { api } from '@/lib/api';
 import { cn } from '@/lib/utils';
@@ -558,6 +558,44 @@ export default function CommoditiesPage() {
                 <p className="text-[10px] font-black uppercase tracking-widest text-primary mb-1">Forward Outlook</p>
                 <p className="text-sm text-foreground/85 leading-relaxed">{analysis.outlook}</p>
               </div>
+
+              {/* What to watch */}
+              {analysis.what_to_watch && (
+                <div className="rounded-xl border border-border bg-muted/40 p-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-1 inline-flex items-center gap-1.5">
+                    <Eye className="h-3 w-3" /> What to Watch
+                  </p>
+                  <p className="text-sm text-foreground/85 leading-relaxed">{analysis.what_to_watch}</p>
+                </div>
+              )}
+
+              {/* Sources */}
+              {analysis.sources && analysis.sources.length > 0 && (
+                <div className="border-t border-border pt-3">
+                  <p className="text-[10px] font-black uppercase tracking-widest text-muted-foreground mb-2 inline-flex items-center gap-1.5">
+                    <Globe className="h-3 w-3" /> Sources ({analysis.sources.length})
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {analysis.sources.map((s, i) => (
+                      <a
+                        key={i}
+                        href={s.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        title={s.title}
+                        className="group inline-flex items-center gap-1.5 rounded-full border border-border bg-background px-2.5 py-1 text-xs text-foreground/80 transition-colors hover:border-primary/40 hover:bg-primary/5 hover:text-primary"
+                      >
+                        <span className="max-w-[180px] truncate">{s.outlet || s.title}</span>
+                        <ExternalLink className="h-3 w-3 shrink-0 opacity-50 group-hover:opacity-100" />
+                      </a>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {analysis.model && (
+                <p className="text-[10px] text-muted-foreground/60 pt-1">Grounded in live web search · {analysis.model}</p>
+              )}
             </div>
           ) : (
             <div className="flex flex-col items-center justify-center py-8 text-center">

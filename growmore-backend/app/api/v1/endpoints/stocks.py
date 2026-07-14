@@ -164,6 +164,16 @@ async def get_stock_financials(
     )
 
 
+@router.get("/{stock_id}/activities")
+async def get_stock_activities(
+    stock_id: UUID,
+    db=Depends(get_db),
+):
+    """Company activities/announcements (financial results, reports, dividends, notices)."""
+    stock_service = StockService(db)
+    return await stock_service.get_activities(stock_id)
+
+
 @router.get("/{stock_id}/ratings", response_model=StockRatingsResponse)
 async def get_stock_ratings(
     stock_id: UUID,
@@ -182,3 +192,13 @@ async def get_stock_ai_analysis_endpoint(stock_id: UUID):
     Cached per stock for 6 hours.
     """
     return await get_stock_ai_analysis(stock_id)
+
+
+@router.get("/{stock_id}/insights")
+async def get_stock_insights_endpoint(stock_id: UUID, refresh: bool = False):
+    """
+    AI insights grounded in live web search — market/social sentiment with real
+    cited sources (news, forums, X/Reddit). Cached per stock for 6 hours.
+    """
+    from app.services.stock_insights_service import get_stock_insights
+    return await get_stock_insights(stock_id, refresh=refresh)

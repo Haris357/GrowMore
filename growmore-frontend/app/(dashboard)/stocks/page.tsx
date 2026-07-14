@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { Card, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { StockLogo } from '@/components/stocks/stock-logo';
 import { Badge } from '@/components/ui/badge';
 import {
   Table,
@@ -32,18 +32,21 @@ import {
   ChevronsRight,
   Filter,
   Columns3,
-  Sparkles,
   Download,
   X,
+  Award,
+  Activity,
   ArrowUpDown,
 } from 'lucide-react';
 import Link from 'next/link';
 import { api } from '@/lib/api';
 import { StockQuote } from '@/types/market';
-import { FilterModal, ScreenerFilters, defaultFilters, getActiveFiltersList, clearSingleFilter, buildScreenerFilters } from '@/components/stocks/filter-modal';
+import { FiltersSidebar, AdvancedFilters, defaultAdvancedFilters, getActiveChips, clearChip, buildBackendFilters } from '@/components/stocks/filters-sidebar';
 import { ColumnsModal, ColumnConfig, availableColumns } from '@/components/stocks/columns-modal';
-import { StrategiesModal } from '@/components/stocks/strategies-modal';
+import { StrategiesDropdown } from '@/components/stocks/strategies-dropdown';
 import { StockDetailDrawer } from '@/components/stocks/stock-detail-drawer';
+import { ShariahBadge } from '@/components/stocks/shariah-badge';
+import { parseCompliance } from '@/lib/shariah';
 import { cn } from '@/lib/utils';
 
 interface PaginationInfo {
@@ -67,12 +70,11 @@ export default function StocksPage() {
   // Modal states
   const [isFilterModalOpen, setIsFilterModalOpen] = useState(false);
   const [isColumnsModalOpen, setIsColumnsModalOpen] = useState(false);
-  const [isStrategiesModalOpen, setIsStrategiesModalOpen] = useState(false);
   const [isDetailDrawerOpen, setIsDetailDrawerOpen] = useState(false);
   const [selectedStock, setSelectedStock] = useState<StockQuote | null>(null);
 
   // Filter and column states
-  const [filters, setFilters] = useState<ScreenerFilters>(defaultFilters);
+  const [filters, setFilters] = useState<AdvancedFilters>(defaultAdvancedFilters);
   const [columns, setColumns] = useState<ColumnConfig[]>(availableColumns);
 
   // Sort state
@@ -96,8 +98,8 @@ export default function StocksPage() {
     try {
       setIsLoading(true);
 
-      // Build backend filters from ScreenerFilters
-      const backendFilters = buildScreenerFilters(filters);
+      // Build backend filters from the advanced filter model
+      const backendFilters = buildBackendFilters(filters);
 
       // Add sort
       backendFilters.sort = `${sortBy}_${sortOrder}`;
@@ -163,23 +165,23 @@ export default function StocksPage() {
     setPageSize(Number(size));
   };
 
-  const handleApplyFilters = (newFilters: ScreenerFilters) => {
+  const handleApplyFilters = (newFilters: AdvancedFilters) => {
     setFilters(newFilters);
   };
 
-  const handleSelectStrategy = (strategyFilters: ScreenerFilters) => {
+  const handleSelectStrategy = (strategyFilters: AdvancedFilters) => {
     setFilters(strategyFilters);
   };
 
   const handleClearFilters = () => {
-    setFilters(defaultFilters);
+    setFilters(defaultAdvancedFilters);
   };
 
   const handleRemoveFilter = (key: string) => {
-    setFilters(clearSingleFilter(filters, key));
+    setFilters(clearChip(filters, key));
   };
 
-  const activeFiltersList = getActiveFiltersList(filters);
+  const activeFiltersList = getActiveChips(filters);
 
   const exportCSV = () => {
     const headers = visibleColumns.map((col) => col.label).join(',');
@@ -259,11 +261,36 @@ export default function StocksPage() {
     <div className="space-y-4 animate-fade-in">
       {/* Header */}
       <div className="flex flex-col gap-4">
-        <div>
-          <h1 className="text-2xl font-bold">PSX Stocks</h1>
-          <p className="text-sm text-muted-foreground">
-            Pakistan Stock Exchange listed companies
-          </p>
+        <div className="flex items-start justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold">PSX Stocks</h1>
+            <p className="text-sm text-muted-foreground">
+              Pakistan Stock Exchange listed companies
+            </p>
+          </div>
+          <div className="flex shrink-0 items-center gap-2">
+            <Link href="/market-activity" className="group shrink-0">
+              <div className="relative flex items-center gap-2.5 overflow-hidden rounded-full bg-gradient-to-r from-sky-500 via-sky-500 to-indigo-500 py-1.5 pl-1.5 pr-3.5 text-white shadow-lg shadow-sky-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-sky-500/40">
+                <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/30">
+                  <Activity className="h-4 w-4" />
+                </span>
+                <span className="hidden text-sm font-semibold sm:inline">Market Activity</span>
+                <span className="flex h-2 w-2 sm:hidden"><span className="absolute inline-flex h-2 w-2 animate-ping rounded-full bg-white/70" /><span className="relative inline-flex h-2 w-2 rounded-full bg-white" /></span>
+              </div>
+            </Link>
+
+            <Link href="/broker-picks" className="group shrink-0">
+              <div className="relative flex items-center gap-2.5 overflow-hidden rounded-full bg-gradient-to-r from-emerald-500 via-emerald-500 to-teal-500 py-1.5 pl-1.5 pr-3.5 text-white shadow-lg shadow-emerald-500/30 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-emerald-500/40">
+                <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover:translate-x-full" />
+                <span className="flex h-7 w-7 items-center justify-center rounded-full bg-white/20 ring-1 ring-white/30">
+                  <Award className="h-4 w-4" />
+                </span>
+                <span className="hidden text-sm font-semibold sm:inline">Broker Picks</span>
+                <span className="rounded-full bg-white/25 px-2 py-0.5 text-[11px] font-bold tracking-wide">2026</span>
+              </div>
+            </Link>
+          </div>
         </div>
 
         {/* Toolbar */}
@@ -279,14 +306,7 @@ export default function StocksPage() {
           </div>
 
           <div className="flex flex-wrap items-center gap-2">
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={() => setIsStrategiesModalOpen(true)}
-            >
-              <Sparkles className="h-4 w-4 mr-2" />
-              Strategies
-            </Button>
+            <StrategiesDropdown onSelectStrategy={handleSelectStrategy} />
             <Button
               variant={activeFilterCount > 0 ? 'default' : 'outline'}
               size="sm"
@@ -401,37 +421,43 @@ export default function StocksPage() {
                               return (
                                 <TableCell key={col.key} className="font-medium sticky left-0 z-20 bg-background group-hover:bg-muted/50 after:absolute after:right-0 after:top-0 after:bottom-0 after:w-px after:bg-border">
                                   <div className="flex items-center gap-2 hover:text-primary">
-                                    <Avatar className="h-7 w-7">
-                                      {stock.logo_url && <AvatarImage src={stock.logo_url} alt={stock.symbol} />}
-                                      <AvatarFallback className="bg-primary/10 text-primary text-xs font-bold">
-                                        {stock.symbol?.slice(0, 2)}
-                                      </AvatarFallback>
-                                    </Avatar>
+                                    <StockLogo symbol={stock.symbol} logoUrl={stock.logo_url} className="h-7 w-7 rounded-full" />
                                     <span className="font-mono font-semibold">{stock.symbol}</span>
                                   </div>
                                 </TableCell>
                               );
                             }
                             if (col.key === 'name') {
+                              const { cleanName, isCompliant } = parseCompliance(stock.name || stock.company_name || '');
                               return (
                                 <TableCell key={col.key} className="max-w-[200px]">
-                                  <span className="truncate block text-sm">
-                                    {stock.name || stock.company_name || '-'}
-                                  </span>
+                                  <div className="flex items-center gap-1.5 min-w-0">
+                                    <span className="truncate block text-sm">
+                                      {cleanName || '-'}
+                                    </span>
+                                    {(stock.name || stock.company_name) && (
+                                      <ShariahBadge isCompliant={isCompliant} size={14} />
+                                    )}
+                                  </div>
                                 </TableCell>
                               );
                             }
                             if (col.key === 'sector') {
+                              const sectorName = stock.sector_name || stock.sector;
                               return (
-                                <TableCell key={col.key} className="max-w-[150px]">
-                                  <span className="truncate block text-xs text-muted-foreground">
-                                    {stock.sector_name || stock.sector || '-'}
-                                  </span>
+                                <TableCell key={col.key} className="text-left">
+                                  {sectorName ? (
+                                    <span className="inline-block max-w-[220px] truncate rounded-md border bg-muted/30 px-2.5 py-1 align-middle text-xs font-semibold text-foreground">
+                                      {sectorName.toUpperCase()}
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs text-muted-foreground">—</span>
+                                  )}
                                 </TableCell>
                               );
                             }
                             return (
-                              <TableCell key={col.key} className="text-right whitespace-nowrap">
+                              <TableCell key={col.key} className="text-right whitespace-nowrap font-semibold tabular-nums text-foreground">
                                 {formatValue(col.key, (stock as any)[col.key])}
                               </TableCell>
                             );
@@ -513,8 +539,26 @@ export default function StocksPage() {
         </CardContent>
       </Card>
 
+      {/* Data attribution */}
+      <div className="flex items-center justify-center gap-2 pt-1 pb-2 text-xs text-muted-foreground">
+        <span>Data provided by</span>
+        <a
+          href="https://dps.psx.com.pk/"
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center gap-1.5 rounded-md transition-colors hover:text-foreground"
+        >
+          <img
+            src="https://dps.psx.com.pk/static/images/logo-white-bg.png"
+            alt="PSX Data Portal"
+            className="h-5 rounded bg-white px-1 py-0.5"
+          />
+          <span className="font-medium">PSX Data Portal · dps.psx.com.pk</span>
+        </a>
+      </div>
+
       {/* Modals */}
-      <FilterModal
+      <FiltersSidebar
         isOpen={isFilterModalOpen}
         onClose={() => setIsFilterModalOpen(false)}
         filters={filters}
@@ -525,11 +569,6 @@ export default function StocksPage() {
         onClose={() => setIsColumnsModalOpen(false)}
         columns={columns}
         onApply={setColumns}
-      />
-      <StrategiesModal
-        isOpen={isStrategiesModalOpen}
-        onClose={() => setIsStrategiesModalOpen(false)}
-        onSelectStrategy={handleSelectStrategy}
       />
       <StockDetailDrawer
         stock={selectedStock}

@@ -12,10 +12,10 @@ import { Label } from '@/components/ui/label';
 import { Checkbox } from '@/components/ui/checkbox';
 import { signInWithEmail, signInWithGoogle } from '@/lib/firebase';
 import { useAuthStore } from '@/stores/authStore';
-import { Leaf, Eye, EyeOff, Loader2, ArrowRight, Mail, Lock, Shield } from 'lucide-react';
+import { Eye, EyeOff, Loader2, ArrowRight, Mail, Lock } from 'lucide-react';
 import { toast } from 'sonner';
 import { cn } from '@/lib/utils';
-import { ThemeToggle } from '@/components/common/theme-toggle';
+import { AuthShell } from '@/components/auth/auth-shell';
 
 const loginSchema = z.object({
   email: z.string().email('Please enter a valid email address'),
@@ -69,33 +69,13 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-background px-4 py-12 relative">
-      <div className="absolute top-5 right-5">
-        <ThemeToggle />
-      </div>
-
-      <div className="w-full max-w-[400px] space-y-8">
-        {/* Logo */}
-        <div className="text-center">
-          <Link href="/" className="inline-flex items-center gap-2.5">
-            <div className="bg-primary/10 p-2 rounded-xl">
-              <Leaf className="h-6 w-6 text-primary" />
-            </div>
-            <span className="text-xl font-bold tracking-tight">GrowMore</span>
-          </Link>
-        </div>
-
-        {/* Header */}
-        <div className="text-center space-y-1.5">
-          <h1 className="text-2xl font-bold tracking-tight">Welcome back</h1>
-          <p className="text-sm text-muted-foreground">Sign in to your account to continue</p>
-        </div>
-
+    <AuthShell title="Welcome back" subtitle="Sign in to your account to continue">
+      <div className="space-y-5">
         {/* Google Sign In */}
         <Button
           type="button"
           variant="outline"
-          className="w-full h-11 rounded-xl font-medium"
+          className="w-full h-11 rounded-xl font-medium bg-background/60"
           onClick={handleGoogleSignIn}
           disabled={isLoading || isGoogleLoading}
         >
@@ -118,7 +98,7 @@ export default function LoginPage() {
             <div className="w-full border-t border-border" />
           </div>
           <div className="relative flex justify-center">
-            <span className="bg-background px-3 text-xs text-muted-foreground uppercase tracking-wider">or</span>
+            <span className="bg-card/80 px-3 text-xs text-muted-foreground uppercase tracking-wider rounded-full">or</span>
           </div>
         </div>
 
@@ -219,13 +199,7 @@ export default function LoginPage() {
             Create account
           </Link>
         </p>
-
-        {/* Security */}
-        <div className="flex items-center justify-center gap-1.5 text-[11px] text-muted-foreground/60">
-          <Shield className="h-3 w-3" />
-          <span>Protected by 256-bit SSL encryption</span>
-        </div>
       </div>
-    </div>
+    </AuthShell>
   );
 }

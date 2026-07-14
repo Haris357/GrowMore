@@ -2,17 +2,17 @@
 
 import { useEffect, useState } from 'react';
 import {
-  Sheet,
-  SheetContent,
-  SheetHeader,
-  SheetTitle,
-  SheetDescription,
-} from '@/components/ui/sheet';
+  Drawer,
+  DrawerContent,
+  DrawerClose,
+  DrawerTitle,
+  DrawerDescription,
+} from '@/components/ui/drawer';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Avatar, AvatarFallback, AvatarImage } from '@/components/ui/avatar';
+import { StockLogo } from '@/components/stocks/stock-logo';
 import { Separator } from '@/components/ui/separator';
 import { Skeleton } from '@/components/ui/skeleton';
 import { ScrollArea } from '@/components/ui/scroll-area';
@@ -25,7 +25,6 @@ import {
   Minus,
   BookmarkPlus,
   Share2,
-  Briefcase,
   CheckCircle2,
   XCircle,
   MinusCircle,
@@ -42,9 +41,17 @@ import {
   MessageCircle,
   Eye,
   RefreshCw,
+  X,
+  ExternalLink,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
+import { parseCompliance } from '@/lib/shariah';
+import { ShariahBadge } from '@/components/stocks/shariah-badge';
+import { TechnicalsTab } from '@/components/stocks/detail/technicals-tab';
+import { PeersTab } from '@/components/stocks/detail/peers-tab';
+import { ActivitiesTab } from '@/components/stocks/detail/activities-tab';
+import { InsightsTab } from '@/components/stocks/detail/insights-tab';
 import { StockQuote, FinancialStatement, RatingMetric, StockRatings, StockHistoryPoint } from '@/types/market';
 import {
   AreaChart,
@@ -115,6 +122,18 @@ interface ExtendedStockData extends StockQuote {
   fcf_yield?: number;
 }
 
+const DRAWER_TABS: { value: string; label: string; icon?: React.ElementType }[] = [
+  { value: 'overview', label: 'Overview' },
+  { value: 'income', label: 'Income Statement' },
+  { value: 'balance', label: 'Balance Sheet' },
+  { value: 'cashflow', label: 'Cash Flow' },
+  { value: 'technicals', label: 'Technicals' },
+  { value: 'ratios', label: 'Ratios' },
+  { value: 'peers', label: 'Peers' },
+  { value: 'activities', label: 'Activities' },
+  { value: 'insights', label: 'Insights', icon: Sparkles },
+];
+
 export function StockDetailDrawer({ stock, isOpen, onClose }: StockDetailDrawerProps) {
   const [loading, setLoading] = useState(false);
   const [stockData, setStockData] = useState<ExtendedStockData | null>(null);
@@ -128,6 +147,8 @@ export function StockDetailDrawer({ stock, isOpen, onClose }: StockDetailDrawerP
   const [ratings, setRatings] = useState<StockRatings | null>(null);
   const [aiAnalysis, setAiAnalysis] = useState<AiAnalysis | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
+  const [techHistory, setTechHistory] = useState<StockHistoryPoint[]>([]);
+  const [techLoading, setTechLoading] = useState(false);
 
   useEffect(() => {
     if (isOpen && stock) {
@@ -143,7 +164,7 @@ export function StockDetailDrawer({ stock, isOpen, onClose }: StockDetailDrawerP
   }, [isOpen, stock?.id, historyPeriod]);
 
   useEffect(() => {
-    if (isOpen && stock && (activeTab === 'income' || activeTab === 'balance' || activeTab === 'cashflow')) {
+    if (isOpen && stock && (activeTab === 'income' || activeTab === 'balance' || activeTab === 'cashflow' || activeTab === 'ratios')) {
       fetchFinancials();
     }
   }, [isOpen, stock?.id, activeTab, financialPeriod]);
@@ -155,20 +176,28 @@ export function StockDetailDrawer({ stock, isOpen, onClose }: StockDetailDrawerP
   }, [isOpen, stock?.id, activeTab, overviewFinancialPeriod]);
 
   useEffect(() => {
-    if (isOpen && stock && activeTab === 'ratings') {
+    if (isOpen && stock && activeTab === 'ratios') {
       fetchRatings();
     }
   }, [isOpen, stock?.id, activeTab]);
 
   useEffect(() => {
-    if (isOpen && stock && activeTab === 'ai' && !aiAnalysis) {
-      fetchAiAnalysis();
+    if (isOpen && stock && activeTab === 'technicals' && techHistory.length === 0) {
+      fetchTechHistory();
     }
   }, [isOpen, stock?.id, activeTab]);
 
-  // Reset AI analysis when stock changes
+  // Reset ALL per-stock state the moment the stock changes, so we never flash
+  // the previously-opened stock's data while the new one is loading.
   useEffect(() => {
+    setStockData(null);
+    setPriceHistory([]);
+    setFinancials([]);
+    setOverviewFinancials([]);
+    setRatings(null);
     setAiAnalysis(null);
+    setTechHistory([]);
+    setActiveTab('overview');
   }, [stock?.id]);
 
   const fetchStockDetails = async () => {
@@ -224,6 +253,19 @@ export function StockDetailDrawer({ stock, isOpen, onClose }: StockDetailDrawerP
     }
   };
 
+  const fetchTechHistory = async () => {
+    if (!stock) return;
+    setTechLoading(true);
+    try {
+      const response = await api.get(`/stocks/${stock.id}/history`, { params: { period: '2Y' } });
+      setTechHistory(response.data?.history || []);
+    } catch {
+      setTechHistory([]);
+    } finally {
+      setTechLoading(false);
+    }
+  };
+
   const fetchAiAnalysis = async (force = false) => {
     if (!stock) return;
     setAiLoading(true);
@@ -248,6 +290,7 @@ export function StockDetailDrawer({ stock, isOpen, onClose }: StockDetailDrawerP
   const isPositive = changePercent >= 0;
   const isZero = changePercent === 0;
   const data = stockData || stock;
+  const { cleanName, isCompliant } = parseCompliance(data.name || data.company_name || data.symbol);
 
   const fmtCurrency = (v: number | undefined | null) => {
     if (v == null) return '-';
@@ -291,40 +334,57 @@ export function StockDetailDrawer({ stock, isOpen, onClose }: StockDetailDrawerP
       volume: p.volume ?? 0,
     }));
 
+  const dpsUrl = `https://dps.psx.com.pk/company/${data.symbol}`;
+
   return (
-    <Sheet open={isOpen} onOpenChange={(open) => !open && onClose()}>
-      <SheetContent side="right" className="w-full sm:max-w-xl md:max-w-2xl lg:max-w-3xl p-0 overflow-hidden">
-        <div className="flex flex-col h-full">
-          {/* Header */}
-          <div className="p-5 border-b bg-gradient-to-r from-background to-muted/30">
-            <SheetHeader className="space-y-3">
-              <div className="flex items-start justify-between gap-3">
-                <div className="flex items-center gap-3">
-                  <Avatar className="h-12 w-12 border-2 border-primary/20">
-                    {data.logo_url && <AvatarImage src={data.logo_url} alt={data.symbol} />}
-                    <AvatarFallback className="bg-primary/10 text-primary font-bold">
-                      {data.symbol?.slice(0, 2)}
-                    </AvatarFallback>
-                  </Avatar>
-                  <div>
-                    <SheetTitle className="text-lg font-bold flex items-center gap-2">
-                      {data.symbol}
-                      <Badge variant="outline" className="text-[10px] font-normal">PSX</Badge>
-                    </SheetTitle>
-                    <SheetDescription className="sr-only">
-                      Detailed view of {data.name || data.symbol} including price, financials, ratings and AI analysis.
-                    </SheetDescription>
-                    <p className="text-xs text-muted-foreground line-clamp-1 max-w-[250px]">
-                      {data.name || data.company_name || data.symbol}
-                    </p>
-                    {(data.sector_name || data.sector) && (
-                      <Badge variant="secondary" className="mt-1 text-[10px]">
-                        {data.sector_name || data.sector}
-                      </Badge>
-                    )}
+    <Drawer open={isOpen} onOpenChange={(open) => !open && onClose()}>
+      <DrawerContent className="h-[96vh] p-0">
+        <DrawerTitle className="sr-only">{cleanName} ({data.symbol}) details</DrawerTitle>
+        <DrawerDescription className="sr-only">
+          Price, financials, technicals, ratios, peers, activities and AI insights for {cleanName}.
+        </DrawerDescription>
+        <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+          {/* Sticky title bar */}
+          <div className="flex items-center justify-between px-4 sm:px-6 py-3 border-b shrink-0">
+            <h2 className="text-base sm:text-lg font-semibold tracking-tight">{data.symbol} Details</h2>
+            <DrawerClose asChild>
+              <Button variant="ghost" size="icon" className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground">
+                <X className="h-4 w-4" />
+              </Button>
+            </DrawerClose>
+          </div>
+
+          {/* Content */}
+          <ScrollArea className="flex-1 min-h-0">
+            <div className="p-4 sm:p-6 space-y-5">
+              {/* Identity header */}
+              <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+                <div className="flex items-center gap-3 min-w-0">
+                  <StockLogo
+                    symbol={data.symbol}
+                    logoUrl={data.logo_url}
+                    className="h-14 w-14 rounded-2xl border shadow-sm"
+                    fallbackClassName="rounded-2xl text-lg"
+                  />
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h3 className="text-lg sm:text-xl font-bold tracking-tight truncate">{cleanName}</h3>
+                      <ShariahBadge isCompliant={isCompliant} size={18} />
+                    </div>
+                    <div className="mt-1 flex flex-wrap items-center gap-x-2 gap-y-1 text-xs text-muted-foreground">
+                      <Badge variant="outline" className="font-mono text-[10px]">{data.symbol}</Badge>
+                      {(data.sector_name || data.sector) && (
+                        <span className="uppercase tracking-wide">{data.sector_name || data.sector}</span>
+                      )}
+                    </div>
                   </div>
                 </div>
-                <div className="flex gap-1.5">
+                <div className="flex items-center gap-2 shrink-0">
+                  <a href={dpsUrl} target="_blank" rel="noopener noreferrer">
+                    <Button variant="outline" size="sm" className="h-8 gap-1.5 text-xs">
+                      Open in DPS PSX <ExternalLink className="h-3 w-3" />
+                    </Button>
+                  </a>
                   <Button variant="outline" size="icon" className="h-8 w-8">
                     <BookmarkPlus className="h-3.5 w-3.5" />
                   </Button>
@@ -333,38 +393,25 @@ export function StockDetailDrawer({ stock, isOpen, onClose }: StockDetailDrawerP
                   </Button>
                 </div>
               </div>
-              <div className="flex items-end gap-3">
-                <div>
-                  <p className="text-2xl font-bold tracking-tight">{fmtCurrency(currentPrice)}</p>
-                  <div className={cn('flex items-center gap-1.5 mt-0.5 text-sm',
-                    isPositive ? 'text-green-600' : isZero ? 'text-muted-foreground' : 'text-red-600'
-                  )}>
-                    {isPositive ? <ChevronUp className="h-4 w-4" /> : isZero ? <Minus className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
-                    <span className="font-semibold">{changeAmount >= 0 ? '+' : ''}{changeAmount.toFixed(2)}</span>
-                    <span className="font-semibold">({changePercent >= 0 ? '+' : ''}{changePercent.toFixed(2)}%)</span>
-                  </div>
-                </div>
-              </div>
-            </SheetHeader>
-          </div>
 
-          {/* Content */}
-          <ScrollArea className="flex-1">
-            <div className="p-5">
               {loading ? (
                 <DrawerSkeleton />
               ) : (
                 <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-                  <TabsList className="grid grid-cols-6 w-full h-9">
-                    <TabsTrigger value="overview" className="text-[11px] px-1">Overview</TabsTrigger>
-                    <TabsTrigger value="income" className="text-[11px] px-1">Income</TabsTrigger>
-                    <TabsTrigger value="balance" className="text-[11px] px-1">Balance</TabsTrigger>
-                    <TabsTrigger value="cashflow" className="text-[11px] px-1">Cash Flow</TabsTrigger>
-                    <TabsTrigger value="ratings" className="text-[11px] px-1">Ratings</TabsTrigger>
-                    <TabsTrigger value="ai" className="text-[11px] px-1 gap-1 data-[state=active]:text-primary">
-                      <Sparkles className="h-3 w-3" /> AI
-                    </TabsTrigger>
-                  </TabsList>
+                  <div className="sticky top-0 z-10 -mx-4 sm:-mx-6 px-4 sm:px-6 bg-background/95 backdrop-blur border-b">
+                    <TabsList className="w-full h-auto justify-start gap-4 sm:gap-6 rounded-none bg-transparent p-0 overflow-x-auto">
+                      {DRAWER_TABS.map((t) => (
+                        <TabsTrigger
+                          key={t.value}
+                          value={t.value}
+                          className="shrink-0 gap-1.5 rounded-none border-b-2 border-transparent bg-transparent px-0.5 pb-2.5 pt-1 text-[13px] font-medium text-muted-foreground shadow-none data-[state=active]:border-foreground data-[state=active]:bg-transparent data-[state=active]:text-foreground data-[state=active]:shadow-none"
+                        >
+                          {t.icon && <t.icon className="h-3.5 w-3.5" />}
+                          {t.label}
+                        </TabsTrigger>
+                      ))}
+                    </TabsList>
+                  </div>
 
                   {/* ===== OVERVIEW TAB ===== */}
                   <TabsContent value="overview" className="space-y-5">
@@ -466,6 +513,7 @@ export function StockDetailDrawer({ stock, isOpen, onClose }: StockDetailDrawerP
                               data={overviewFinancials}
                               dataKey="eps"
                               color="hsl(280, 60%, 55%)"
+                              perShare
                             />
                           </div>
                         ) : (
@@ -511,7 +559,7 @@ export function StockDetailDrawer({ stock, isOpen, onClose }: StockDetailDrawerP
                         { key: 'ebitda', label: 'EBITDA' },
                         { key: 'interest_expense', label: 'Interest Expense' },
                         { key: 'net_income', label: 'Net Income' },
-                        { key: 'eps', label: 'EPS' },
+                        { key: 'eps', label: 'EPS', perShare: true },
                       ]}
                     />
                   </TabsContent>
@@ -551,61 +599,58 @@ export function StockDetailDrawer({ stock, isOpen, onClose }: StockDetailDrawerP
                     />
                   </TabsContent>
 
-                  {/* ===== RATINGS TAB ===== */}
-                  <TabsContent value="ratings" className="space-y-4">
-                    {ratings ? (
-                      <>
-                        <RatingSection title="Growth Metrics" metrics={ratings.growth_metrics} />
-                        <RatingSection title="Stability Metrics" metrics={ratings.stability_metrics} />
-                        <RatingSection title="Valuation Metrics" metrics={ratings.valuation_metrics} />
-                        <RatingSection title="Efficiency Metrics" metrics={ratings.efficiency_metrics} />
-                        <RatingSection title="Cash Flow Metrics" metrics={ratings.cash_flow_metrics} />
-                      </>
-                    ) : (
-                      <div className="text-center text-sm text-muted-foreground py-8">
-                        Loading ratings...
-                      </div>
-                    )}
+                  {/* ===== TECHNICALS TAB ===== */}
+                  <TabsContent value="technicals" className="space-y-4">
+                    <TechnicalsTab history={techHistory} loading={techLoading} />
                   </TabsContent>
 
-                  {/* ===== AI ANALYSIS TAB ===== */}
-                  <TabsContent value="ai" className="space-y-4">
-                    {aiLoading && !aiAnalysis ? (
-                      <AiAnalysisSkeleton />
-                    ) : aiAnalysis ? (
-                      <AiAnalysisDashboard analysis={aiAnalysis} onRefresh={() => fetchAiAnalysis(true)} loading={aiLoading} />
-                    ) : (
-                      <div className="text-center py-12">
-                        <Sparkles className="h-10 w-10 mx-auto text-muted-foreground opacity-40 mb-3" />
-                        <p className="text-sm font-medium">AI analysis unavailable</p>
-                        <p className="text-xs text-muted-foreground mt-1">Tap below to retry.</p>
-                        <Button size="sm" className="mt-4 gap-2" onClick={() => fetchAiAnalysis(true)}>
-                          <RefreshCw className="h-3.5 w-3.5" /> Generate analysis
-                        </Button>
-                      </div>
-                    )}
+                  {/* ===== RATIOS TAB ===== */}
+                  <TabsContent value="ratios" className="space-y-4">
+                    <RatiosTab data={data as ExtendedStockData} financials={financials} ratings={ratings} />
+                  </TabsContent>
+
+                  {/* ===== PEERS TAB ===== */}
+                  <TabsContent value="peers" className="space-y-4">
+                    <PeersTab
+                      stock={{
+                        id: String(stock.id),
+                        symbol: data.symbol,
+                        name: data.name,
+                        company_name: data.company_name,
+                        sector_name: data.sector_name,
+                        sector: data.sector,
+                        logo_url: data.logo_url,
+                        current_price: currentPrice,
+                        pe_ratio: data.pe_ratio != null ? Number(data.pe_ratio) : undefined,
+                        dividend_yield: data.dividend_yield != null ? Number(data.dividend_yield) : undefined,
+                        market_cap: data.market_cap != null ? Number(data.market_cap) : undefined,
+                        eps: data.eps != null ? Number(data.eps) : undefined,
+                      }}
+                      active={activeTab === 'peers'}
+                    />
+                  </TabsContent>
+
+                  {/* ===== ACTIVITIES TAB ===== */}
+                  <TabsContent value="activities" className="space-y-4">
+                    <ActivitiesTab
+                      stockId={String(stock.id)}
+                      symbol={data.symbol}
+                      logoUrl={data.logo_url}
+                      active={activeTab === 'activities'}
+                    />
+                  </TabsContent>
+
+                  {/* ===== INSIGHTS (AI · web-grounded) TAB ===== */}
+                  <TabsContent value="insights" className="space-y-4">
+                    <InsightsTab stockId={String(stock.id)} symbol={data.symbol} active={activeTab === 'insights'} />
                   </TabsContent>
                 </Tabs>
               )}
             </div>
           </ScrollArea>
-
-          {/* Footer */}
-          <div className="p-3 border-t bg-muted/30">
-            <div className="flex gap-2">
-              <Button className="flex-1 h-9 text-xs" variant="default">
-                <Briefcase className="h-3.5 w-3.5 mr-1.5" />
-                Add to Portfolio
-              </Button>
-              <Button className="flex-1 h-9 text-xs" variant="outline">
-                <BookmarkPlus className="h-3.5 w-3.5 mr-1.5" />
-                Add to Watchlist
-              </Button>
-            </div>
-          </div>
         </div>
-      </SheetContent>
-    </Sheet>
+      </DrawerContent>
+    </Drawer>
   );
 }
 
@@ -647,11 +692,15 @@ interface FinancialTableRow {
   key: string;
   label: string;
   isHeader?: boolean;
+  /** Per-share rows (e.g. EPS) are already in rupees and must not be scaled. */
+  perShare?: boolean;
 }
 
 function FinancialTable({ statements, rows }: { statements: FinancialStatement[]; rows: FinancialTableRow[] }) {
   const sorted = [...statements].sort((a, b) => b.fiscal_year - a.fiscal_year);
 
+  // Statement values are stored in thousands (PSX/DPS convention); scale to
+  // absolute PKR for display. Per-share figures are already absolute.
   const fmtVal = (v: number | undefined | null) => {
     if (v == null) return '-';
     const num = Number(v);
@@ -697,11 +746,11 @@ function FinancialTable({ statements, rows }: { statements: FinancialStatement[]
               <tr key={row.key} className="border-b border-border/30 hover:bg-muted/20">
                 <td className="p-2 text-muted-foreground sticky left-0 bg-background">{row.label}</td>
                 {sorted.map((s) => {
-                  const val = (s as any)[row.key];
-                  const num = val != null ? Number(val) : null;
+                  const raw = (s as any)[row.key];
+                  const val = raw == null ? null : row.perShare ? Number(raw) : Number(raw) * 1000;
                   return (
-                    <td key={`${s.fiscal_year}-${s.quarter || ''}`} className={cn('text-right p-2 font-mono', num != null && num < 0 && 'text-red-500')}>
-                      {fmtVal(val)}
+                    <td key={`${s.fiscal_year}-${s.quarter || ''}`} className={cn('text-right p-2 font-mono', val != null && val < 0 && 'text-red-500')}>
+                      {row.perShare && val != null ? `Rs ${val.toFixed(2)}` : fmtVal(val)}
                     </td>
                   );
                 })}
@@ -752,21 +801,172 @@ function RatingSection({ title, metrics }: { title: string; metrics: RatingMetri
   );
 }
 
+// ── Ratios tab ──────────────────────────────────────────────────────────────
+
+interface RatioTile {
+  label: string;
+  value: string;
+  sub: string;
+  tone?: 'good' | 'bad';
+}
+
+function num(v: unknown): number | null {
+  if (v == null || v === '') return null;
+  const n = Number(v);
+  return Number.isFinite(n) ? n : null;
+}
+const asX = (v: number | null) => (v == null ? 'N/A' : `${v.toFixed(2)}x`);
+const asPct = (v: number | null) => (v == null ? 'N/A' : `${v.toFixed(2)}%`);
+const asNum = (v: number | null) => (v == null ? 'N/A' : v.toFixed(2));
+
+function RatioGroup({ title, subtitle, tiles }: { title: string; subtitle: string; tiles: RatioTile[] }) {
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">{title}</CardTitle>
+        <p className="text-xs text-muted-foreground">{subtitle}</p>
+      </CardHeader>
+      <CardContent className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-x-4 gap-y-5">
+        {tiles.map((t) => (
+          <div key={t.label} className="space-y-0.5">
+            <p className="text-[10px] font-medium uppercase tracking-wide text-muted-foreground">{t.label}</p>
+            <p
+              className={cn(
+                'text-xl font-bold tracking-tight',
+                t.tone === 'good' && 'text-emerald-600 dark:text-emerald-500',
+                t.tone === 'bad' && 'text-red-500',
+              )}
+            >
+              {t.value}
+            </p>
+            <p className="text-[10px] leading-tight text-muted-foreground">{t.sub}</p>
+          </div>
+        ))}
+      </CardContent>
+    </Card>
+  );
+}
+
+function RatiosTab({
+  data,
+  financials,
+  ratings,
+}: {
+  data: ExtendedStockData;
+  financials: FinancialStatement[];
+  ratings: StockRatings | null;
+}) {
+  const d = data as ExtendedStockData & Record<string, unknown>;
+  const latest = [...financials]
+    .filter((s) => !s.quarter)
+    .sort((a, b) => b.fiscal_year - a.fiscal_year)[0];
+
+  const pe = num(d.pe_ratio);
+  const eps = num(d.eps);
+  const dps = num(d.dps);
+  const revenue = num(latest?.revenue);
+  const ebitda = num(latest?.ebitda);
+
+  const earningsYield = pe && pe > 0 ? 100 / pe : null;
+  const ebitdaMargin = revenue && ebitda != null ? (ebitda / revenue) * 100 : null;
+  const payout = eps && eps !== 0 && dps != null ? (dps / eps) * 100 : null;
+  const retention = payout != null ? 100 - payout : null;
+
+  const growthTone = (v: number | null): RatioTile['tone'] =>
+    v == null ? undefined : v >= 0 ? 'good' : 'bad';
+  const posGood = (v: number | null): RatioTile['tone'] =>
+    v == null ? undefined : v > 0 ? 'good' : undefined;
+
+  const valuation: RatioTile[] = [
+    { label: 'P/E (TTM)', value: asX(pe), sub: 'Price ÷ TTM EPS', tone: posGood(pe) },
+    { label: 'P/B', value: asX(num(d.pb_ratio)), sub: 'Price ÷ book value per share' },
+    { label: 'P/S (TTM)', value: asX(num(d.ps_ratio)), sub: 'Price ÷ TTM sales per share' },
+    { label: 'PEG', value: asX(num(d.peg_ratio)), sub: 'P/E ÷ earnings growth %' },
+    { label: 'EV / EBITDA', value: asX(num(d.ev_ebitda)), sub: 'Enterprise value ÷ TTM EBITDA' },
+    { label: 'Earnings Yield', value: asPct(earningsYield), sub: 'TTM earnings ÷ price (inverse P/E)', tone: posGood(earningsYield) },
+    { label: 'Dividend Yield', value: asPct(num(d.dividend_yield)), sub: 'TTM dividend per share ÷ price', tone: posGood(num(d.dividend_yield)) },
+    { label: 'FCF Yield', value: asPct(num(d.fcf_yield)), sub: 'Free cash flow ÷ market cap' },
+  ];
+
+  const profitability: RatioTile[] = [
+    { label: 'Gross Margin', value: asPct(num(d.gross_margin)), sub: 'Gross profit ÷ revenue', tone: posGood(num(d.gross_margin)) },
+    { label: 'Operating Margin', value: asPct(num(d.operating_margin)), sub: 'Operating profit ÷ revenue', tone: posGood(num(d.operating_margin)) },
+    { label: 'EBITDA Margin', value: asPct(ebitdaMargin), sub: 'EBITDA ÷ revenue', tone: posGood(ebitdaMargin) },
+    { label: 'Net Margin', value: asPct(num(d.net_margin)), sub: 'Net profit ÷ revenue', tone: posGood(num(d.net_margin)) },
+    { label: 'ROE', value: asPct(num(d.roe)), sub: 'Net income ÷ shareholder equity', tone: posGood(num(d.roe)) },
+    { label: 'ROA', value: asPct(num(d.roa)), sub: 'Net income ÷ total assets', tone: posGood(num(d.roa)) },
+  ];
+
+  const leverage: RatioTile[] = [
+    { label: 'Debt / Equity', value: asNum(num(d.debt_to_equity)), sub: '(LT + ST debt) ÷ equity' },
+    { label: 'Current Ratio', value: asX(num(d.current_ratio)), sub: 'Current assets ÷ current liabilities' },
+    { label: 'Quick Ratio', value: asX(num(d.quick_ratio)), sub: 'Liquid assets ÷ current liabilities' },
+  ];
+
+  const growth: RatioTile[] = [
+    { label: 'Revenue Growth', value: asPct(num(d.revenue_growth)), sub: 'YoY change in revenue', tone: growthTone(num(d.revenue_growth)) },
+    { label: 'Earnings Growth', value: asPct(num(d.earnings_growth)), sub: 'YoY change in net profit', tone: growthTone(num(d.earnings_growth)) },
+    { label: 'Profit Growth', value: asPct(num(d.profit_growth)), sub: 'YoY change in profit', tone: growthTone(num(d.profit_growth)) },
+    { label: 'Payout Ratio', value: asPct(payout), sub: 'DPS ÷ EPS' },
+    { label: 'Earnings Retention', value: asPct(retention), sub: '1 − payout ratio' },
+  ];
+
+  const perShare: RatioTile[] = [
+    { label: 'EPS (TTM)', value: asNum(eps), sub: 'TTM net income ÷ shares' },
+    { label: 'DPS (TTM)', value: asNum(dps), sub: 'TTM dividends ÷ shares' },
+    { label: 'Book Value / Share', value: asNum(num(d.book_value)), sub: 'Shareholder equity ÷ shares' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <RatioGroup title="Valuation" subtitle="How the market prices the business" tiles={valuation} />
+      <RatioGroup title="Profitability" subtitle="How efficiently the business turns revenue into profit" tiles={profitability} />
+      <RatioGroup title="Leverage & Liquidity" subtitle="Financial structure and ability to meet obligations" tiles={leverage} />
+      <RatioGroup title="Growth" subtitle="Year-over-year change in key figures" tiles={growth} />
+      <RatioGroup title="Per Share" subtitle="Key metrics on a per-share basis" tiles={perShare} />
+
+      {ratings && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">Quality Signals</CardTitle>
+            <p className="text-xs text-muted-foreground">Good / bad flags from computed metrics</p>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            <RatingSection title="Growth" metrics={ratings.growth_metrics} />
+            <RatingSection title="Stability" metrics={ratings.stability_metrics} />
+            <RatingSection title="Valuation" metrics={ratings.valuation_metrics} />
+            <RatingSection title="Efficiency" metrics={ratings.efficiency_metrics} />
+            <RatingSection title="Cash Flow" metrics={ratings.cash_flow_metrics} />
+          </CardContent>
+        </Card>
+      )}
+
+      <p className="text-[10px] text-muted-foreground text-center pt-1">
+        Ratios are computed from the latest reported financials and most recent close. N/A = not yet available.
+      </p>
+    </div>
+  );
+}
+
 function MiniBarChart({
   title,
   data,
   dataKey,
   color,
+  perShare = false,
 }: {
   title: string;
   data: FinancialStatement[];
   dataKey: string;
   color: string;
+  perShare?: boolean;
 }) {
   const sorted = [...data].sort((a, b) => a.fiscal_year - b.fiscal_year);
+  // Statement figures are stored in thousands; scale to absolute PKR (EPS excepted).
+  const scale = perShare ? 1 : 1000;
   const chartData = sorted.map((s) => ({
     label: s.quarter ? `Q${s.quarter} ${s.fiscal_year}` : `FY${s.fiscal_year}`,
-    value: (s as any)[dataKey] != null ? Number((s as any)[dataKey]) : 0,
+    value: (s as any)[dataKey] != null ? Number((s as any)[dataKey]) * scale : 0,
   }));
 
   const fmtTick = (v: number) => {

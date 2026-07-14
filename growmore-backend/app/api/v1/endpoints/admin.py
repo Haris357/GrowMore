@@ -20,27 +20,35 @@ async def run_manual_sync(
     """
     Manually trigger a PSX data sync job.
 
-    - stocks: Update all PSX stock prices (daily, fast)
+    - stocks: Update all PSX stock prices from DPS market-watch (daily, fast)
+    - stocks_intraday: Light price refresh (PSX Terminal stats, DPS fallback)
     - stocks_full: Full sync — prices + fundamentals + financials + logos
     - stocks_history: Backfill 2 years of daily OHLCV history for all stocks
-    - fundamentals: Alias for stocks_full
-    - financial_statements: Alias for stocks_full
+    - fundamentals: DPS-based fundamentals + financials (market cap, P/E, 52w, ratios)
+    - financial_statements: Alias for fundamentals
     - all: Full sync + history backfill (runs everything)
     """
     from app.services.psx import PSXSyncService
 
     async def _run_sync():
         sync = PSXSyncService()
-        if sync_type in ("stocks", "stocks_intraday"):
-            await sync.sync_daily_prices()
-        elif sync_type in ("stocks_full", "fundamentals", "financial_statements"):
-            await sync.sync_full()
-        elif sync_type == "stocks_history":
-            await sync.sync_history_backfill()
-        elif sync_type == "all":
-            await sync.sync_full()
-            await sync.sync_history_backfill()
-            await sync.sync_daily_prices()
+        try:
+            if sync_type == "stocks":
+                await sync.sync_daily_prices()
+            elif sync_type == "stocks_intraday":
+                await sync.sync_intraday()
+            elif sync_type in ("fundamentals", "financial_statements"):
+                await sync.sync_fundamentals()
+            elif sync_type == "stocks_full":
+                await sync.sync_full()
+            elif sync_type == "stocks_history":
+                await sync.sync_history_backfill()
+            elif sync_type == "all":
+                await sync.sync_full()
+                await sync.sync_history_backfill()
+                await sync.sync_daily_prices()
+        finally:
+            await sync.close()
 
     background_tasks.add_task(_run_sync)
 

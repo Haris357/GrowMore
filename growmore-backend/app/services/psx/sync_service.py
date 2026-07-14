@@ -108,7 +108,9 @@ class PSXSyncService:
                     company_id, stock_id = ids
 
                     price_data = map_market_watch_to_stock_update(row)
-                    price_updates.append({**price_data, "id": stock_id})
+                    # company_id is required (NOT NULL) so the upsert's INSERT path is valid;
+                    # ON CONFLICT does not suppress NOT NULL violations.
+                    price_updates.append({**price_data, "id": stock_id, "company_id": company_id})
 
                     if row.name and row.name != row.symbol:
                         name_updates.append({"id": company_id, "name": row.name})
@@ -206,7 +208,9 @@ class PSXSyncService:
                     company_id, stock_id = ids
 
                     price_data = map_market_watch_to_stock_update(row)
-                    price_updates.append({**price_data, "id": stock_id})
+                    # company_id is required (NOT NULL) so the upsert's INSERT path is valid;
+                    # ON CONFLICT does not suppress NOT NULL violations.
+                    price_updates.append({**price_data, "id": stock_id, "company_id": company_id})
 
                     if row.name and row.name != row.symbol:
                         name_updates.append({"id": company_id, "name": row.name})
@@ -252,6 +256,10 @@ class PSXSyncService:
         # Phase 5: DPS financial statements
         logger.info(f"Full sync Phase 5: DPS financial statements for {len(all_symbols)} symbols")
         await self._sync_financial_statements_batch(all_symbols, result)
+
+        # Phase 5b: derive ratios (ROE/ROA/leverage/liquidity/growth) from financials
+        logger.info("Full sync Phase 5b: computing derived ratios")
+        self.data_writer.compute_and_store_all_ratios()
 
         # Phase 6: PSX Terminal klines for recent history
         logger.info(f"Full sync Phase 6: PSX Terminal klines history gap-fill")
@@ -359,9 +367,11 @@ class PSXSyncService:
                 company_update, stock_update = map_company_full_to_updates(res)
                 if company_update:
                     logo_url = res.info.logo_url if res.info else None
-                    self.data_writer.update_company(sym, company_update, logo_url=logo_url)
+                    if self.data_writer.update_company(sym, company_update, logo_url=logo_url):
+                        result.companies_updated += 1
                 if stock_update and len(stock_update) > 1:  # more than just last_updated
-                    self.data_writer.update_stock_fundamentals(sym, stock_update)
+                    if self.data_writer.update_stock_fundamentals(sym, stock_update):
+                        result.fundamentals_updated += 1
 
             done = min(i + DPS_COMPANY_BATCH_SIZE, len(symbols))
             if done % 50 == 0 or done == len(symbols):
@@ -519,8 +529,77 @@ class PSXSyncService:
                     result.errors.append(f"{symbol}: {e}")
 
         except Exception as e:
-            result.errors.append(f"Market stats: {e}")
-            logger.error(f"Intraday sync failed: {e}")
+            # PSX Terminal stats endpoint is unavailable — fall back to DPS
+            # market-watch, which refreshes prices for every stock in one request.
+            logger.warning(f"Intraday market stats failed ({e}); falling back to DPS market-watch")
+            await self._intraday_dps_fallback(result)
 
         result.duration_seconds = time.time() - start
+        logger.info(
+            f"Intraday sync done: {result.stocks_updated} prices, "
+            f"{result.errors_count} errors in {result.duration_seconds:.1f}s"
+        )
+        return result
+
+    async def _intraday_dps_fallback(self, result: SyncResult) -> SyncResult:
+        """
+        Refresh live prices from DPS market-watch (all stocks, one request).
+        Prices only — no history rows or name updates (keeps the 5-min tick light).
+        """
+        try:
+            market_rows = await self.dps_client.fetch_market_watch()
+            result.symbols_found = len(market_rows)
+
+            price_updates = []
+            for row in market_rows:
+                ids = self.data_writer.get_ids(row.symbol)
+                if not ids:
+                    continue
+                company_id, stock_id = ids
+                price_data = map_market_watch_to_stock_update(row)
+                price_updates.append({**price_data, "id": stock_id, "company_id": company_id})
+
+            result.stocks_updated = self.data_writer.batch_update_stock_prices(price_updates)
+        except Exception as e:
+            result.errors.append(f"DPS intraday fallback failed: {e}")
+            logger.error(f"DPS intraday fallback failed: {e}")
+        return result
+
+    # ─── DPS Fundamentals Sync (fallback for the dead PSX Terminal API) ───
+
+    async def sync_fundamentals(
+        self, symbols: Optional[List[str]] = None, limit: Optional[int] = None
+    ) -> SyncResult:
+        """
+        Refresh fundamentals + financial statements from DPS company pages.
+
+        This is the fallback for the PSX Terminal fundamentals/company/dividends
+        endpoints (currently down). Scrapes market cap, P/E, 52-week range, shares,
+        free float, ratios, and multi-year financials from dps.psx.com.pk.
+
+        symbols: which symbols to sync; defaults to all cached symbols.
+        limit:   optional cap (handy for testing a small batch first).
+        """
+        result = SyncResult(mode="fundamentals_dps")
+        start = time.time()
+        self.initialize()
+
+        if symbols is None:
+            symbols = list(self.data_writer._symbol_cache.keys())
+        if limit:
+            symbols = symbols[:limit]
+
+        logger.info(f"DPS fundamentals sync: {len(symbols)} symbols")
+        await self._sync_financial_statements_batch(symbols, result)
+
+        # Compute derived ratios (ROE/ROA/leverage/liquidity/growth) from the
+        # financials we just saved.
+        self.data_writer.compute_and_store_all_ratios()
+
+        result.duration_seconds = time.time() - start
+        logger.info(
+            f"DPS fundamentals sync done: {result.fundamentals_updated} fundamentals, "
+            f"{result.companies_updated} companies, {result.financials_saved} financials, "
+            f"{result.errors_count} errors in {result.duration_seconds:.1f}s"
+        )
         return result

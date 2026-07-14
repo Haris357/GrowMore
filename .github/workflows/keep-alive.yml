@@ -1,0 +1,40 @@
+name: Keep backend awake
+
+# Render's free tier spins a web service down after ~15 minutes with no inbound
+# HTTP request. Internal background work does NOT count — only external requests
+# keep it awake. This workflow pings the lightweight /health endpoint on a
+# schedule so the backend stays warm (and gets woken if it ever slept).
+#
+# Setup (one time):
+#   Repo → Settings → Secrets and variables → Actions → Variables → New variable
+#   Name:  RENDER_URL
+#   Value: https://<your-service>.onrender.com   (no trailing slash)
+
+on:
+  schedule:
+    # Every 5 minutes. GitHub often delays scheduled runs by several minutes under
+    # load, so the 5-min cadence leaves margin to stay under Render's 15-min window.
+    - cron: '*/5 * * * *'
+  workflow_dispatch: {}   # allow manual runs from the Actions tab for testing
+
+concurrency:
+  group: keep-alive
+  cancel-in-progress: false
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping /health
+        run: |
+          URL="${{ vars.RENDER_URL }}"
+          if [ -z "$URL" ]; then
+            echo "::warning::RENDER_URL variable is not set — skipping. Add it under Settings → Secrets and variables → Actions → Variables."
+            exit 0
+          fi
+          echo "Pinging ${URL}/health"
+          # --max-time 90 tolerates a cold start (~50s). Never fail the job on a
+          # timeout — the ping still wakes the service; failing would spam emails.
+          curl -fsS --retry 3 --retry-all-errors --max-time 90 "${URL}/health" \
+            && echo "" && echo "OK" \
+            || echo "ping did not return 2xx (service may be cold-starting) — that's fine"

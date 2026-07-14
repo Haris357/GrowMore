@@ -215,86 +215,122 @@ async def get_price_history(metal: str = "gold", period: str = "1M") -> Dict[str
     return result
 
 
+def _analysis_prompt(gold: Dict, silver: Dict, rate: Any) -> str:
+    return (
+        "You are a precious-metals market strategist writing for Pakistani investors.\n"
+        "Use web search to research the MOST RECENT (last few days/weeks) real drivers of the "
+        "gold and silver market and how they affect prices in Pakistan.\n"
+        "Cover: global spot gold/silver moves, US Fed policy & real yields, USD strength (DXY), "
+        "geopolitics & safe-haven demand, central-bank buying, and the USD/PKR rate & local premiums.\n\n"
+        "Current live data for context:\n"
+        f"- Gold (24K): Rs. {gold.get('per_tola', 'N/A')}/tola (${gold.get('price_usd_oz', 'N/A')}/oz), change {gold.get('change_percentage', 0)}%\n"
+        f"- Silver: Rs. {silver.get('per_tola', 'N/A')}/tola (${silver.get('price_usd_oz', 'N/A')}/oz), change {silver.get('change_percentage', 0)}%\n"
+        f"- USD/PKR: {rate}\n\n"
+        "Base every point on what you actually found via web search.\n"
+        "CRITICAL: You MUST cite your real web sources inline like ([outlet](url)) after factual "
+        "claims inside the 'summary', 'key_factors', 'outlook', 'gold_insight' and 'silver_insight' "
+        "values. Cite at least 3-5 different reputable sources (Reuters, Bloomberg, Kitco, World Gold "
+        "Council, local outlets like Business Recorder). This is mandatory.\n\n"
+        "Respond with ONLY a valid JSON object (no markdown fences) in this exact shape:\n"
+        "{\n"
+        '  "summary": "<3-4 sentence market summary of what is moving gold & silver right now>",\n'
+        '  "trend": "bullish" | "bearish" | "neutral",\n'
+        '  "key_factors": ["<driver 1>", "<driver 2>", "<driver 3>", "<driver 4>"],\n'
+        '  "gold_insight": "<2-3 sentences specific to gold, incl. Pakistan angle>",\n'
+        '  "silver_insight": "<2-3 sentences specific to silver>",\n'
+        '  "outlook": "<2-3 sentence short-term (days/weeks) outlook>",\n'
+        '  "what_to_watch": "<1-2 sentences on the next catalysts/levels to watch>"\n'
+        "}\n"
+        "Keep key_factors to 3-5 items. Do not invent numbers or dates you did not find."
+    )
+
+
 async def get_market_analysis() -> Dict[str, Any]:
-    """Generate AI-powered gold/silver market analysis using OpenAI."""
+    """Web-search-grounded gold/silver market analysis with real cited sources."""
     cached = _get_cached(_analysis_cache, "analysis", ANALYSIS_CACHE_TTL)
     if cached:
         return cached
 
-    # Get current prices for context
     prices = await get_precious_metals_prices()
     gold = prices.get("gold", {})
     silver = prices.get("silver", {})
 
-    prompt = f"""You are a precious metals market analyst. Provide a brief, insightful analysis of the current gold and silver market conditions. Focus on Pakistan's perspective.
-
-Current market data:
-- Gold (24K): Rs. {gold.get('per_tola', 'N/A')}/tola (${gold.get('price_usd_oz', 'N/A')}/oz), change: {gold.get('change_percentage', 0)}%
-- Silver: Rs. {silver.get('per_tola', 'N/A')}/tola (${silver.get('price_usd_oz', 'N/A')}/oz), change: {silver.get('change_percentage', 0)}%
-- USD/PKR: {prices.get('exchange_rate', 'N/A')}
-
-Provide your analysis in this JSON format:
-{{
-    "summary": "2-3 sentence market summary",
-    "trend": "bullish" or "bearish" or "neutral",
-    "key_factors": ["factor 1", "factor 2", "factor 3", "factor 4"],
-    "outlook": "1-2 sentence short-term outlook",
-    "gold_insight": "1 sentence specific to gold",
-    "silver_insight": "1 sentence specific to silver"
-}}
-
-Respond ONLY with valid JSON, no markdown or extra text."""
-
-    if not settings.openai_api_key:
-        fallback = {
-            "summary": "Gold and silver prices are influenced by global economic conditions, geopolitical tensions, and USD/PKR exchange rate movements.",
+    def _static_fallback(summary: str, outlook: str) -> Dict[str, Any]:
+        return {
+            "summary": summary,
             "trend": "neutral",
             "key_factors": [
-                "Global economic uncertainty",
-                "USD/PKR exchange rate fluctuations",
-                "Central bank monetary policies",
-                "Safe-haven demand dynamics",
+                "Global economic uncertainty & safe-haven demand",
+                "US Fed policy and real interest rates",
+                "USD/PKR exchange-rate movements",
+                "Central-bank gold buying",
             ],
-            "outlook": "Precious metals remain a key hedge against inflation and currency depreciation in Pakistan.",
             "gold_insight": f"Gold is trading at Rs. {gold.get('per_tola', 'N/A')} per tola.",
             "silver_insight": f"Silver is trading at Rs. {silver.get('per_tola', 'N/A')} per tola.",
+            "outlook": outlook,
+            "what_to_watch": "Watch the USD/PKR rate and upcoming US inflation/Fed signals.",
+            "sources": [],
             "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "model": None,
+            "_fallback": True,
         }
-        _set_cached(_analysis_cache, "analysis", fallback)
-        return fallback
 
+    if not settings.openai_api_key:
+        result = _static_fallback(
+            "Gold and silver prices are driven by global economic conditions, geopolitical tensions, "
+            "US monetary policy and USD/PKR exchange-rate movements.",
+            "Precious metals remain a key hedge against inflation and currency depreciation in Pakistan.",
+        )
+        _set_cached(_analysis_cache, "analysis", result)
+        return result
+
+    # Reuse the exact web-search + citation helpers used by stock Insights & GrowNews.
+    from app.services.stock_insights_service import (
+        _parse_json, _clean, _clean_list, _extract_sources,
+    )
+
+    model = settings.openai_model or "gpt-4.1-mini"
     try:
         from openai import AsyncOpenAI
         client = AsyncOpenAI(api_key=settings.openai_api_key)
-
-        response = await client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            temperature=0.7,
-            max_tokens=500,
+        response = await client.responses.create(
+            model=model,
+            tools=[{"type": "web_search"}],
+            input=_analysis_prompt(gold, silver, prices.get("exchange_rate", "N/A")),
         )
+        parsed = _parse_json(response.output_text or "")
+        if not parsed:
+            result = _static_fallback(
+                "Market analysis could not be structured right now. Tap refresh to try again.",
+                "Check back shortly for an updated, sourced outlook.",
+            )
+            _set_cached(_analysis_cache, "analysis", result)
+            return result
 
-        import json
-        content = response.choices[0].message.content.strip()
-        # Strip markdown code block if present
-        if content.startswith("```"):
-            content = content.split("\n", 1)[1].rsplit("```", 1)[0].strip()
-        analysis = json.loads(content)
-        analysis["generated_at"] = time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+        trend = str(parsed.get("trend", "neutral")).lower()
+        if trend not in ("bullish", "bearish", "neutral"):
+            trend = "neutral"
 
-        _set_cached(_analysis_cache, "analysis", analysis)
-        return analysis
+        result = {
+            "summary": _clean(parsed.get("summary", "")),
+            "trend": trend,
+            "key_factors": _clean_list(parsed.get("key_factors")),
+            "gold_insight": _clean(parsed.get("gold_insight", "")),
+            "silver_insight": _clean(parsed.get("silver_insight", "")),
+            "outlook": _clean(parsed.get("outlook", "")),
+            "what_to_watch": _clean(parsed.get("what_to_watch", "")),
+            "sources": _extract_sources(response),
+            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+            "model": model,
+        }
+        _set_cached(_analysis_cache, "analysis", result)
+        return result
 
     except Exception as e:
-        logger.error(f"OpenAI analysis error: {e}")
-        fallback = {
-            "summary": "Market analysis is temporarily unavailable. Please check back later.",
-            "trend": "neutral",
-            "key_factors": ["Data temporarily unavailable"],
-            "outlook": "Check back shortly for updated analysis.",
-            "gold_insight": f"Gold is trading at Rs. {gold.get('per_tola', 'N/A')} per tola.",
-            "silver_insight": f"Silver is trading at Rs. {silver.get('per_tola', 'N/A')} per tola.",
-            "generated_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
-        }
-        _set_cached(_analysis_cache, "analysis", fallback)
-        return fallback
+        logger.error(f"commodities web_search analysis failed: {e}")
+        result = _static_fallback(
+            "Market analysis is temporarily unavailable. Please check back later.",
+            "Check back shortly for updated analysis.",
+        )
+        _set_cached(_analysis_cache, "analysis", result)
+        return result

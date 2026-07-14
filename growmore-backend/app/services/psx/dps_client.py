@@ -269,7 +269,88 @@ class DPSPortalClient:
         data.ratios = self._parse_ratios(soup)
         data.financials = self._parse_financials(soup, symbol)
         data.equity = self._parse_equity(soup)
+        # Authoritative pass: DPS stat tiles (div.stats_label + div.stats_value).
+        # These are the reliable source for market cap, P/E, 52-week range,
+        # shares outstanding, and free float — override anything guessed above.
+        self._parse_stats_blocks(soup, data.fundamentals, data.equity)
+        # Prefer the latest *completed* annual EPS. DPS lists the current fiscal
+        # year as an "annual" row too, but it only holds year-to-date figures
+        # (e.g. one quarter), so exclude it. The inline page EPS is unreliable.
+        if data.financials:
+            current_year = datetime.now().year
+            annual = sorted(
+                [
+                    p for p in data.financials
+                    if p.period_type == "annual" and p.eps is not None
+                    and p.fiscal_year < current_year
+                ],
+                key=lambda p: p.fiscal_year,
+                reverse=True,
+            )
+            if annual:
+                data.fundamentals.eps = annual[0].eps
         return data
+
+    def _parse_stats_blocks(self, soup, f: "FundamentalsData", eq: "EquityData") -> None:
+        """
+        Parse the DPS company-page stat tiles: <div class="stats_label"> paired with
+        the following <div class="stats_value">. Authoritative for the valuation
+        fundamentals the PSX Terminal API used to provide.
+        """
+        try:
+            for lab in soup.select("div.stats_label"):
+                label = self._clean_text(lab.get_text()).lower()
+                val_el = lab.find_next_sibling()
+                if val_el is None:
+                    continue
+                value = self._clean_text(val_el.get_text())
+                if not value:
+                    continue
+
+                if "market cap" in label:
+                    # DPS reports market cap in thousands (000's).
+                    mc = self._to_float(value)
+                    if mc is not None:
+                        f.market_cap = mc * 1000
+                        eq.market_cap = mc * 1000
+                elif "p/e" in label:
+                    pe = self._to_float(value)
+                    if pe is not None:
+                        f.pe_ratio = pe
+                elif "52" in label and "range" in label:
+                    lo, hi = self._parse_range(value)
+                    if lo is not None:
+                        f.week_52_low = lo
+                    if hi is not None:
+                        f.week_52_high = hi
+                elif label.startswith("shares"):
+                    sh = self._to_int(value)
+                    if sh:
+                        f.shares_outstanding = sh
+                        eq.shares_outstanding = sh
+                elif "free float" in label:
+                    if "%" in value:
+                        pct = self._to_float(value)
+                        if pct is not None:
+                            eq.free_float_pct = pct
+                    else:
+                        ff = self._to_int(value)
+                        if ff:
+                            f.float_shares = ff
+                            eq.free_float_shares = ff
+                elif label == "volume" and f.volume is None:
+                    v = self._to_int(value)
+                    if v:
+                        f.volume = v
+        except Exception as e:
+            logger.debug(f"Error parsing stats blocks: {e}")
+
+    def _parse_range(self, text: str) -> tuple:
+        """Split a '200.01 – 369.99' style range into (low, high), separator-agnostic."""
+        nums = re.findall(r"[\d,]+\.?\d*", text or "")
+        if len(nums) >= 2:
+            return self._to_float(nums[0]), self._to_float(nums[1])
+        return None, None
 
     def _parse_company_info(self, soup, symbol: str) -> CompanyInfo:
         info = CompanyInfo()
@@ -737,6 +818,173 @@ class DPSPortalClient:
         except Exception as e:
             logger.debug(f"Error parsing EOD history for {symbol}: {e}")
             return []
+
+    # ── Market Activity (announcements feed + payouts) ──
+
+    async def _post(self, url: str, data: Dict[str, Any], max_retries: int = 3) -> Optional[str]:
+        headers = {**self._headers, "X-Requested-With": "XMLHttpRequest"}
+        for attempt in range(max_retries):
+            try:
+                async with httpx.AsyncClient(
+                    timeout=httpx.Timeout(30.0, connect=15.0), verify=False, follow_redirects=True
+                ) as client:
+                    response = await client.post(url, data=data, headers=headers)
+                    response.raise_for_status()
+                    return response.text
+            except (httpx.HTTPStatusError, httpx.RequestError) as e:
+                logger.warning(f"POST {url} failed (attempt {attempt + 1}): {e}")
+                if attempt < max_retries - 1:
+                    await asyncio.sleep(1.5 * (attempt + 1))
+        return None
+
+    @staticmethod
+    def _classify_activity(title: str) -> str:
+        t = (title or "").lower()
+        if any(k in t for k in ["sold", "bought", "purchase of shares", "disposal of shares",
+                                 "disclosure of interest", "acquisition of shares", "shares by",
+                                 "sale of shares", "closed period"]):
+            return "insider"
+        if any(k in t for k in ["financial result", "financial statement", "quarterly", "half year",
+                                 "half-year", "annual accounts", "nine month", "earning", "profit"]):
+            return "earnings"
+        if any(k in t for k in ["dividend", "bonus", "book closure", "payout", "entitlement", "right issue"]):
+            return "payout"
+        return "announcement"
+
+    async def fetch_market_activity(self, query: str = "", offset: int = 0, count: int = 100) -> List[Dict[str, Any]]:
+        """Fetch the PSX announcements feed (date, time, title, category, document_url)."""
+        html = await self._post("https://dps.psx.com.pk/announcements", {
+            "type": "psx", "symbol": "", "query": query, "count": count,
+            "offset": offset, "date_from": "", "date_to": "", "page": "annc",
+        })
+        if not html:
+            return []
+        soup = self._parse_html(html)
+        out: List[Dict[str, Any]] = []
+        for tr in soup.select("tr"):
+            cells = tr.select("td")
+            if len(cells) < 3:
+                continue
+            date_label = self._clean_text(cells[0].get_text())
+            time_label = self._clean_text(cells[1].get_text())
+            title = self._clean_text(cells[2].get_text())
+            if not title:
+                continue
+            doc_url = None
+            link = tr.select_one("a[href]")
+            if link:
+                href = link.get("href", "")
+                if href and not href.lower().startswith("javascript"):
+                    doc_url = href if href.startswith("http") else f"{self._base_url}{href}"
+            out.append({
+                "date": date_label,
+                "time": time_label,
+                "title": title,
+                "category": self._classify_activity(title),
+                "document_url": doc_url,
+            })
+        return out
+
+    async def fetch_payouts(self, count: int = 100, offset: int = 0) -> List[Dict[str, Any]]:
+        """Fetch the payouts (dividends/bonus) feed."""
+        html = await self._post("https://dps.psx.com.pk/payouts", {
+            "symbol": "", "query": "", "count": count, "offset": offset,
+            "date_from": "", "date_to": "", "page": "payouts",
+        })
+        if not html:
+            return []
+        soup = self._parse_html(html)
+        out: List[Dict[str, Any]] = []
+        for tr in soup.select("tr"):
+            cells = tr.select("td")
+            if len(cells) < 5:
+                continue
+            vals = [self._clean_text(c.get_text()) for c in cells]
+            symbol = vals[0]
+            if not symbol:
+                continue
+            out.append({
+                "symbol": symbol,
+                "company": vals[1] if len(vals) > 1 else "",
+                "sector": vals[2] if len(vals) > 2 else "",
+                "payout": vals[3] if len(vals) > 3 else "",
+                "date": vals[4] if len(vals) > 4 else "",
+                "book_closure": vals[5] if len(vals) > 5 else "",
+                "category": "payout",
+            })
+        return out
+
+    # ── Company Announcements (Activities) ──
+
+    async def fetch_company_announcements(self, symbol: str) -> List[Dict[str, Any]]:
+        """
+        Fetch the "Company Announcements" table from /company/{symbol}.
+        Returns normalized activity items: date, title, category, priority, document_url.
+        """
+        html = await self._fetch(f"{self._base_url}/company/{symbol}")
+        if not html:
+            return []
+        return self._parse_announcements(html)
+
+    def _parse_announcements(self, html: str) -> List[Dict[str, Any]]:
+        soup = self._parse_html(html)
+        for table in soup.select("table"):
+            headers = [self._clean_text(th.get_text()).lower() for th in table.select("th")]
+            if "title" not in headers or "date" not in headers:
+                continue
+            di, ti = headers.index("date"), headers.index("title")
+            body = table.select_one("tbody") or table
+            out: List[Dict[str, Any]] = []
+            for tr in body.select("tr"):
+                cells = tr.select("td")
+                if len(cells) <= max(di, ti):
+                    continue
+                title = self._clean_text(cells[ti].get_text())
+                if not title:
+                    continue
+                date_label = self._clean_text(cells[di].get_text())
+                doc_url = None
+                link = tr.select_one("a[href]")
+                if link:
+                    href = link.get("href", "")
+                    if href and not href.lower().startswith("javascript"):
+                        doc_url = href if href.startswith("http") else f"{self._base_url}{href}"
+                category, priority = self._classify_announcement(title)
+                out.append({
+                    "date": self._parse_announcement_date(date_label),
+                    "date_label": date_label,
+                    "title": title,
+                    "category": category,
+                    "priority": priority,
+                    "document_url": doc_url,
+                })
+            return out
+        return []
+
+    def _parse_announcement_date(self, raw: str) -> Optional[str]:
+        for fmt in ("%b %d, %Y", "%B %d, %Y", "%d %b %Y", "%Y-%m-%d"):
+            try:
+                return datetime.strptime(raw.strip(), fmt).date().isoformat()
+            except (ValueError, TypeError):
+                continue
+        return None
+
+    def _classify_announcement(self, title: str) -> tuple:
+        """Derive (category, priority) from an announcement title. priority ∈ critical|high|medium."""
+        t = title.lower()
+        if any(k in t for k in ("merger", "acquisition", "amalgamation", "scheme of arrangement", "joint venture", "spin-off")):
+            return "Corporate Action", "critical"
+        if "dividend" in t or "bonus" in t or "right" in t and "share" in t:
+            return "Dividend", "high"
+        if "financial result" in t or "financial statement" in t:
+            return "Financial Result", "high"
+        if any(k in t for k in ("quarterly report", "half yearly", "half-yearly", "annual report", "transmission of")):
+            return "Report", "medium"
+        if "board" in t and ("meeting" in t or "directors" in t):
+            return "Board Meeting", "medium"
+        if any(k in t for k in ("notice", "advertisement", "postal ballot", "agm", "egm")):
+            return "Notice", "medium"
+        return "Announcement", "medium"
 
     # ── Utility Parsers ──
 

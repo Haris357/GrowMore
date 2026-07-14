@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none">
+  <!-- ascending bars -->
+  <rect x="2" y="15" width="4" height="7" rx="1.2" fill="#10b981" opacity="0.5"/>
+  <rect x="10" y="11" width="4" height="11" rx="1.2" fill="#10b981" opacity="0.75"/>
+  <rect x="18" y="7" width="4" height="15" rx="1.2" fill="#10b981"/>
+  <!-- rising trend line -->
+  <polyline points="3 13 9 8.5 13 11.5 21 5" fill="none" stroke="#10b981" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+  <!-- arrow head (up-right) -->
+  <polyline points="16 4.5 21.5 4.5 21.5 10" fill="none" stroke="#10b981" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

@@ -34,7 +34,22 @@ async def lifespan(app: FastAPI):
     except Exception as e:
         logger.warning(f"PSX sync service init warning: {e}")
 
+    # Keep-alive loop: keeps the Render web service warm and the Supabase project
+    # active on free tiers. No-op locally unless KEEP_ALIVE=1 is set.
+    import asyncio as _asyncio
+    from app.services.keep_alive import keep_alive_loop, keep_alive_enabled
+    keep_alive_task = None
+    if keep_alive_enabled():
+        keep_alive_task = _asyncio.create_task(keep_alive_loop())
+
     yield
+
+    if keep_alive_task:
+        keep_alive_task.cancel()
+        try:
+            await keep_alive_task
+        except _asyncio.CancelledError:
+            pass
 
     logger.info(f"Shutting down {settings.app_name}...")
 

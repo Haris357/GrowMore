@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, Query
-from typing import List
+from typing import List, Optional
 from uuid import UUID
+from pydantic import BaseModel
 
 from app.core.dependencies import get_db, get_current_user
 from app.services.portfolio_service import PortfolioService
@@ -44,6 +45,39 @@ async def create_portfolio(
         data.model_dump(),
     )
     return PortfolioResponse.model_validate(portfolio.model_dump())
+
+
+class TradeRequest(BaseModel):
+    holding_type: str  # stock | gold | silver | crypto
+    asset_id: Optional[str] = None  # stock UUID or crypto coin_id; ignored for metals
+    transaction_type: str = "buy"  # buy | sell
+    quantity: float
+    price: float
+    fees: float = 0
+    transaction_date: Optional[str] = None
+
+
+@router.get("/{portfolio_id}/detail")
+async def get_portfolio_detail(
+    portfolio_id: UUID,
+    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Full portfolio with LIVE prices across stocks, gold, silver and crypto."""
+    portfolio_service = PortfolioService(db)
+    return await portfolio_service.get_portfolio_detail(portfolio_id, current_user.id)
+
+
+@router.post("/{portfolio_id}/trade")
+async def execute_trade(
+    portfolio_id: UUID,
+    data: TradeRequest,
+    current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
+):
+    """Buy or sell an asset (stock/gold/silver/crypto) and update the holding."""
+    portfolio_service = PortfolioService(db)
+    return await portfolio_service.execute_trade(portfolio_id, current_user.id, data.model_dump())
 
 
 @router.get("/{portfolio_id}", response_model=PortfolioDetailResponse)

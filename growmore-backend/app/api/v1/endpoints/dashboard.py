@@ -7,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, Query
 
-from app.core.dependencies import get_current_user
+from app.core.dependencies import get_current_user, get_db
 from app.db.supabase import get_supabase_service_client
 from app.services.analytics_service import AnalyticsService
 from app.models.user import User
@@ -24,18 +24,35 @@ def get_analytics_service():
 @router.get("/summary")
 async def get_dashboard_summary(
     current_user: User = Depends(get_current_user),
+    db=Depends(get_db),
 ):
     """
     Get complete dashboard summary.
 
     Includes:
-    - Portfolio overview (total value, gain/loss)
+    - Portfolio overview (LIVE, multi-asset: stocks + gold + silver + crypto)
     - Market indices and breadth
     - Goals progress
     - Notification counts
     """
     service = get_analytics_service()
-    return await service.get_dashboard_summary(current_user.firebase_uid)
+    summary = await service.get_dashboard_summary(current_user.firebase_uid)
+
+    # Override portfolio block with the live multi-asset engine (same as the Portfolio page).
+    try:
+        from app.services.portfolio_service import PortfolioService
+        overview = await PortfolioService(db).get_user_portfolio_overview(current_user.id)
+        summary["portfolio"] = {
+            "total_value": overview["total_value"],
+            "total_gain_loss": overview["total_gain_loss"],
+            "gain_loss_pct": overview["gain_loss_pct"],
+            "today_pl": overview["today_pl"],
+            "today_pl_pct": overview["today_pl_pct"],
+            "holdings_count": overview["holdings_count"],
+        }
+    except Exception:
+        pass
+    return summary
 
 
 @router.get("/sectors")
@@ -118,37 +135,15 @@ async def get_quick_stats(
     except Exception as e:
         log.warning(f"quick-stats market: {e}")
 
-    # ─── Portfolio value (user-owned: try UUID first, fall back to firebase_uid) ──
+    # ─── Portfolio value (LIVE, multi-asset: stocks + gold + silver + crypto) ──
     portfolio_value = total_invested = 0.0
-    holdings_data = []
-    for uid_val in (user_uuid, user_fb):
-        if not uid_val:
-            continue
-        try:
-            holdings_result = db.table("holdings").select(
-                "symbol,quantity,average_price"
-            ).eq("user_id", uid_val).execute()
-            holdings_data = holdings_result.data or []
-            break  # success — stop trying alternates
-        except Exception as e:
-            log.debug(f"quick-stats holdings with uid={uid_val}: {e}")
-            holdings_data = []
-            continue
-
-    if holdings_data:
-        try:
-            symbols = list({h["symbol"] for h in holdings_data if h.get("symbol")})
-            if symbols:
-                prices_result = db.table("stocks").select("symbol,current_price").in_("symbol", symbols).execute()
-                price_map = {s["symbol"]: float(s.get("current_price", 0) or 0) for s in (prices_result.data or [])}
-                for h in holdings_data:
-                    qty = int(h.get("quantity", 0) or 0)
-                    avg = float(h.get("average_price", 0) or 0)
-                    current = price_map.get(h.get("symbol", ""), avg)
-                    portfolio_value += qty * current
-                    total_invested += qty * avg
-        except Exception as e:
-            log.warning(f"quick-stats portfolio compute: {e}")
+    try:
+        from app.services.portfolio_service import PortfolioService
+        overview = await PortfolioService(db).get_user_portfolio_overview(current_user.id)
+        portfolio_value = overview["total_value"]
+        total_invested = overview["total_invested"]
+    except Exception as e:
+        log.warning(f"quick-stats portfolio compute: {e}")
 
     # ─── Unread notifications (resilient) ──────────────────────────────────
     unread = 0

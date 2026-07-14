@@ -13,26 +13,16 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: 'GrowMore - Pakistan\'s Smartest Investment Tracker',
-  description: 'Track PSX stocks, gold prices, bank deposits, and more - all in one place',
+  title: 'GrowMore — The Complete Investment Platform',
+  description: 'Track PSX stocks, gold and silver, crypto, and your full portfolio in one dashboard. Built for Pakistan, powered by AI.',
   openGraph: {
-    title: 'GrowMore - Pakistan\'s Smartest Investment Tracker',
-    description: 'Track PSX stocks, gold prices, bank deposits, and more',
-    images: [
-      {
-        url: 'https://bolt.new/static/og_default.png',
-      },
-    ],
+    title: 'GrowMore — The Complete Investment Platform',
+    description: 'Stocks, commodities, crypto, portfolio, and AI news — one platform.',
   },
   twitter: {
     card: 'summary_large_image',
-    title: 'GrowMore - Pakistan\'s Smartest Investment Tracker',
-    description: 'Track PSX stocks, gold prices, bank deposits, and more',
-    images: [
-      {
-        url: 'https://bolt.new/static/og_default.png',
-      },
-    ],
+    title: 'GrowMore — The Complete Investment Platform',
+    description: 'Stocks, commodities, crypto, portfolio, and AI news — one platform.',
   },
 };
 

@@ -143,6 +143,32 @@ class StockService:
             "statements": statements,
         }
 
+    async def get_activities(self, stock_id: UUID) -> Dict[str, Any]:
+        """Company activities (announcements) scraped on demand from DPS PSX."""
+        stock = await self.stock_repo.get_by_id(stock_id)
+        if not stock:
+            raise NotFoundError("Stock")
+
+        company = await self.company_repo.get_by_id(stock["company_id"])
+        if not company:
+            raise NotFoundError("Company")
+
+        symbol = company.symbol if hasattr(company, "symbol") else company.get("symbol", "")
+
+        activities: List[Dict[str, Any]] = []
+        if symbol:
+            from app.services.psx.dps_client import DPSPortalClient
+            try:
+                activities = await DPSPortalClient().fetch_company_announcements(symbol)
+            except Exception:
+                activities = []
+
+        return {
+            "stock_id": str(stock_id),
+            "symbol": symbol,
+            "activities": activities,
+        }
+
     async def get_ratings(self, stock_id: UUID) -> StockRatingsResponse:
         """Compute Good/Bad ratings for a stock based on its metrics."""
         stock_data = await self.stock_repo.get_by_id(stock_id)
