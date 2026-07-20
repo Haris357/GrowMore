@@ -52,6 +52,7 @@ import { TechnicalsTab } from '@/components/stocks/detail/technicals-tab';
 import { PeersTab } from '@/components/stocks/detail/peers-tab';
 import { ActivitiesTab } from '@/components/stocks/detail/activities-tab';
 import { InsightsTab } from '@/components/stocks/detail/insights-tab';
+import { SimpleTab } from '@/components/stocks/detail/simple-tab';
 import { StockQuote, FinancialStatement, RatingMetric, StockRatings, StockHistoryPoint } from '@/types/market';
 import {
   AreaChart,
@@ -124,6 +125,7 @@ interface ExtendedStockData extends StockQuote {
 
 const DRAWER_TABS: { value: string; label: string; icon?: React.ElementType }[] = [
   { value: 'overview', label: 'Overview' },
+  { value: 'simple', label: 'Simple View', icon: Lightbulb },
   { value: 'income', label: 'Income Statement' },
   { value: 'balance', label: 'Balance Sheet' },
   { value: 'cashflow', label: 'Cash Flow' },
@@ -638,6 +640,11 @@ export function StockDetailDrawer({ stock, isOpen, onClose }: StockDetailDrawerP
                       logoUrl={data.logo_url}
                       active={activeTab === 'activities'}
                     />
+                  </TabsContent>
+
+                  {/* ===== SIMPLE VIEW (beginner · AI-researched) TAB ===== */}
+                  <TabsContent value="simple" className="space-y-4">
+                    <SimpleTab stockId={String(stock.id)} active={activeTab === 'simple'} />
                   </TabsContent>
 
                   {/* ===== INSIGHTS (AI · web-grounded) TAB ===== */}

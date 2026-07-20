@@ -25,6 +25,9 @@ class Settings(BaseSettings):
 
     openai_api_key: Optional[str] = Field(default=None, env="OPENAI_API_KEY")
     openai_model: str = Field(default="gpt-4.1-mini", env="OPENAI_MODEL")
+    # Stronger model for deep research tabs (beginner verdict / metals guide),
+    # where the model must search the web and reason across many sources.
+    openai_research_model: str = Field(default="gpt-4.1", env="OPENAI_RESEARCH_MODEL")
     coingecko_api_key: Optional[str] = Field(default=None, env="COINGECKO_API_KEY")
     cryptopanic_api_key: Optional[str] = Field(default=None, env="CRYPTOPANIC_API_KEY")
     newsapi_key: Optional[str] = Field(default=None, env="NEWSAPI_KEY")

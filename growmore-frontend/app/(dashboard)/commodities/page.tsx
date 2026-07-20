@@ -13,6 +13,7 @@ import {
   Calculator, Scale, Coins, Quote, AlertCircle, Clock, Eye, ExternalLink, Globe,
 } from 'lucide-react';
 import { api } from '@/lib/api';
+import { CommoditiesSimpleGuide } from '@/components/commodities/simple-guide';
 import { cn } from '@/lib/utils';
 import {
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Area, AreaChart,
@@ -469,6 +470,9 @@ export default function CommoditiesPage() {
         </Card>
       </div>
 
+      {/* ════ Beginner "Should I Buy?" guide ═══════════════════════════════ */}
+      <CommoditiesSimpleGuide />
+
       {/* ════ AI Market Analysis ════════════════════════════════════════════ */}
       <Card className="overflow-hidden">
         <CardHeader className="pb-3">
@@ -594,7 +598,7 @@ export default function CommoditiesPage() {
               )}
 
               {analysis.model && (
-                <p className="text-[10px] text-muted-foreground/60 pt-1">Grounded in live web search · {analysis.model}</p>
+                <p className="text-[10px] text-muted-foreground/60 pt-1">Researched by AI from live web sources</p>
               )}
             </div>
           ) : (

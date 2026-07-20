@@ -41,3 +41,14 @@ async def get_analysis():
     Cached for 1 hour.
     """
     return await get_market_analysis()
+
+
+@router.get("/simple")
+async def get_simple_guide():
+    """
+    Plain-English beginner guide for gold & silver: is today's price high or low
+    versus the past year, what the metal is actually for, and simple pros/cons.
+    Rule-based (no AI cost). Not investment advice.
+    """
+    from app.services.simple_verdict_service import get_commodity_simple
+    return await get_commodity_simple()

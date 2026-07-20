@@ -202,3 +202,15 @@ async def get_stock_insights_endpoint(stock_id: UUID, refresh: bool = False):
     """
     from app.services.stock_insights_service import get_stock_insights
     return await get_stock_insights(stock_id, refresh=refresh)
+
+
+@router.get("/{stock_id}/verdict")
+async def get_stock_verdict_endpoint(stock_id: UUID):
+    """
+    Plain-English "is this a good investment?" scorecard for non-technical users.
+    Rule-based (instant, no AI cost): answers everyday questions about profit,
+    debt, growth, price and risk, and returns an overall health score.
+    Not investment advice.
+    """
+    from app.services.simple_verdict_service import get_stock_verdict
+    return await get_stock_verdict(stock_id)

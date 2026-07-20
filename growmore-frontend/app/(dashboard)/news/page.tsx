@@ -179,7 +179,7 @@ export default function NewsPage() {
 
       {feed?.model && (
         <p className="mt-8 text-center text-[10px] text-muted-foreground">
-          Researched by AI from live web sources · {feed.model}. Not investment advice.
+          Researched by AI from live web sources. Not investment advice.
         </p>
       )}
 
